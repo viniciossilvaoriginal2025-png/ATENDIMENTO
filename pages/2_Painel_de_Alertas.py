@@ -5,20 +5,60 @@ import config # <-- Importa o arquivo de configuração
 st.set_page_config(layout="wide")
 st.title("🚨 Painel de Alertas e Pendências (SLA 24h)")
 
-# Verifica se os dados já foram carregados e filtrados na página principal
-if 'df_filtrado' not in st.session_state or st.session_state['df_filtrado'].empty:
-    st.error("Por favor, carregue um arquivo e defina seus filtros na página 'Visão Geral' primeiro.")
+# --- MUDANÇA AQUI ---
+# 1. Verifica se o DF PROCESSADO (não filtrado) existe
+if 'df_processado' not in st.session_state or st.session_state['df_processado'].empty:
+    st.error("Por favor, carregue um arquivo na página 'Visão Geral' primeiro.")
     st.stop()
 
-# Busca os dados filtrados que a página principal preparou
-df_filtrado = st.session_state['df_filtrado']
+# 2. Busca o DF PROCESSADO COMPLETO
+df_processado = st.session_state['df_processado']
+
+# ---- 3. (NOVO) CRIA FILTROS PRÓPRIOS PARA ESTA PÁGINA ----
+st.sidebar.subheader("Filtros do Painel de Alertas")
+df_filtrado_alertas = df_processado.copy() # Começa com todos os dados
+
+cidades_selecionadas = st.sidebar.multiselect(
+    f'Filtrar por {config.COLUNA_CIDADE}',
+    options=sorted(df_processado[config.COLUNA_CIDADE].dropna().unique()),
+    default=[],
+    key='alertas_cidade' # Chave única para este filtro
+)
+tecnicos_selecionados = []
+if config.COLUNA_TECNICO in df_processado.columns:
+    tecnicos_selecionados = st.sidebar.multiselect(
+        f'Filtrar por {config.COLUNA_TECNICO}',
+        options=sorted(df_processado[config.COLUNA_TECNICO].dropna().unique()),
+        default=[],
+        key='alertas_tecnico' # Chave única
+    )
+assuntos_selecionados = []
+if config.COLUNA_ASSUNTO in df_processado.columns:
+    assuntos_selecionados = st.sidebar.multiselect(
+        f'Filtrar por {config.COLUNA_ASSUNTO}',
+        options=sorted(df_processado[config.COLUNA_ASSUNTO].dropna().unique()),
+        default=[],
+        key='alertas_assunto' # Chave única
+    )
+# Nota: Não adicionamos filtro de Status aqui, pois esta página já
+# filtra automaticamente pela lista STATUS_ABERTOS do config.py
+
+# --- 4. (NOVO) Aplica os filtros desta página ---
+if cidades_selecionadas:
+    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_CIDADE].isin(cidades_selecionadas)]
+if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado_alertas.columns:
+    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
+if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado_alertas.columns:
+    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
+
 
 # ---- Início da Lógica da Página de Alertas ----
 
 st.info(f"Focando em status: {', '.join(config.STATUS_ABERTOS)}.")
 
-# Filtra o dataframe JÁ FILTRADO para pegar apenas os status pendentes
-df_abertos = df_filtrado[df_filtrado[config.COLUNA_STATUS].isin(config.STATUS_ABERTOS)].copy()
+# --- MUDANÇA AQUI ---
+# 5. Usa o dataframe filtrado DESTA PÁGINA (df_filtrado_alertas)
+df_abertos = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(config.STATUS_ABERTOS)].copy()
 
 if not df_abertos.empty:
     # Cálculos de Alerta e Tempo Restante
@@ -89,7 +129,6 @@ else:
     
     colunas_finais = [col for col in colunas_finais if col in df_display.columns or col in ['Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)']]
 
-    # ---- Correção do bug .hide() ----
     colunas_para_esconder = [
         'Tempo_Decorrido_Segundos', 'Tempo_Restante_Segundos', 
         'SLA_Estourado', 'SLA_Alerta'
