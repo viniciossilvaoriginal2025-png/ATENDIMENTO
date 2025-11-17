@@ -86,36 +86,46 @@ if colunas_faltando:
     st.write("Colunas encontradas no arquivo:", df_processado.columns.tolist())
     st.stop()
 
-# ---- Filtros na Barra Lateral ----
-st.sidebar.subheader("Filtros de Dados")
+# ---- Filtros na Barra Lateral (Para esta página) ----
+st.sidebar.subheader("Filtros da Visão Geral")
 df_filtrado = df_processado.copy() 
 
 cidades_selecionadas = st.sidebar.multiselect(
     f'Filtrar por {config.COLUNA_CIDADE}',
     options=sorted(df[config.COLUNA_CIDADE].dropna().unique()),
-    default=[] 
+    default=[],
+    key='main_cidade' 
 )
 tecnicos_selecionados = []
 if config.COLUNA_TECNICO in df.columns:
     tecnicos_selecionados = st.sidebar.multiselect(
         f'Filtrar por {config.COLUNA_TECNICO}',
         options=sorted(df[config.COLUNA_TECNICO].dropna().unique()),
-        default=[] 
+        default=[],
+        key='main_tecnico' 
     )
 assuntos_selecionados = []
 if config.COLUNA_ASSUNTO in df.columns:
     assuntos_selecionados = st.sidebar.multiselect(
         f'Filtrar por {config.COLUNA_ASSUNTO}',
         options=sorted(df[config.COLUNA_ASSUNTO].dropna().unique()),
-        default=[] 
+        default=[],
+        key='main_assunto' 
     )
+
+# --- MUDANÇA AQUI: Filtro de Status trocado para Checkbox ---
 status_selecionados = []
 if config.COLUNA_STATUS in df.columns:
-    status_selecionados = st.sidebar.multiselect(
-        f'Filtrar por {config.COLUNA_STATUS}',
-        options=sorted(df[config.COLUNA_STATUS].dropna().unique()),
-        default=[] 
-    )
+    st.sidebar.subheader(f"Filtrar por {config.COLUNA_STATUS}")
+    opcoes_status = sorted(df[config.COLUNA_STATUS].dropna().unique())
+    
+    # Cria uma "flag" (checkbox) para cada status
+    for status in opcoes_status:
+        # Default=True significa que todos vêm marcados
+        if st.sidebar.checkbox(status, value=True, key=f"main_status_{status}"):
+            status_selecionados.append(status)
+# --- FIM DA MUDANÇA ---
+
 
 # --- Lógica de Filtro ---
 if cidades_selecionadas:
@@ -124,10 +134,16 @@ if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
 if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
-if status_selecionados and config.COLUNA_STATUS in df_filtrado.columns:
-    df_filtrado = df_filtrado[df_filtrado[config.COLUNA_STATUS].isin(status_selecionados)]
 
-st.session_state['df_filtrado'] = df_filtrado
+# --- MUDANÇA AQUI: Lógica de filtro para Checkbox ---
+# Se o usuário desmarcar todas as caixas, a lista fica vazia e o filtro mostra tudo.
+# Para evitar isso, aplicamos o filtro se *alguma* seleção (mesmo que todas) foi feita.
+if config.COLUNA_STATUS in df_filtrado.columns:
+    # O filtro agora é sempre aplicado. Se o usuário desmarcar tudo, não verá nada.
+    df_filtrado = df_filtrado[df_filtrado[config.COLUNA_STATUS].isin(status_selecionados)]
+# --- FIM DA MUDANÇA ---
+
+# (Não precisamos salvar o df_filtrado no session_state)
 
 # ---- SEÇÃO 1: Métricas Gerais (Agendamento / Encaminhamento) ----
 st.header("Métricas Gerais de Tempo (Baseado nos Filtros)")
