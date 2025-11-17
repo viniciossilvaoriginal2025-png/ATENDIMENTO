@@ -13,7 +13,7 @@ if 'df_processado' not in st.session_state or st.session_state['df_processado'].
 # Busca o DF PROCESSADO COMPLETO
 df_processado = st.session_state['df_processado']
 
-# ---- (NOVO) CRIA FILTROS PRÓPRIOS PARA ESTA PÁGINA ----
+# ---- CRIA FILTROS PRÓPRIOS PARA ESTA PÁGINA ----
 st.sidebar.subheader("Filtros do Painel de Alertas")
 df_filtrado_alertas = df_processado.copy() # Começa com todos os dados
 
@@ -40,21 +40,43 @@ if config.COLUNA_ASSUNTO in df_processado.columns:
         key='alertas_assunto' # Chave única
     )
 
-# --- (NOVO) Aplica os filtros desta página ---
+# --- MUDANÇA AQUI: Filtro de Status com Checkbox (Flags) ---
+status_selecionados = []
+if config.COLUNA_STATUS in df_processado.columns:
+    st.sidebar.subheader(f"Filtrar por {config.COLUNA_STATUS}")
+    opcoes_status = sorted(df_processado[config.COLUNA_STATUS].dropna().unique())
+    
+    # Cria uma "flag" (checkbox) para cada status
+    for status in opcoes_status:
+        # Default=True significa que todos vêm marcados
+        # Usamos uma chave única para não dar conflito com a outra página
+        if st.sidebar.checkbox(status, value=True, key=f"alertas_status_{status}"):
+            status_selecionados.append(status)
+# --- FIM DA MUDANÇA ---
+
+
+# --- Aplica os filtros desta página ---
 if cidades_selecionadas:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_CIDADE].isin(cidades_selecionadas)]
 if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado_alertas.columns:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
 if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado_alertas.columns:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
+    
+# --- MUDANÇA AQUI: Aplica o filtro das flags de status
+if config.COLUNA_STATUS in df_filtrado_alertas.columns:
+    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(status_selecionados)]
+# --- FIM DA MUDANÇA ---
 
 
 # ---- Início da Lógica da Página de Alertas ----
 
-st.info(f"Focando em status: {', '.join(config.STATUS_ABERTOS)}.")
+# A nota de info foi removida, pois agora os filtros controlam tudo.
+# st.info(f"Focando em status: {', '.join(config.STATUS_ABERTOS)}.")
 
-# Usa o dataframe filtrado DESTA PÁGINA (df_filtrado_alertas)
-df_abertos = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(config.STATUS_ABERTOS)].copy()
+# --- MUDANÇA AQUI ---
+# O "df_abertos" agora é simplesmente o dataframe filtrado pelas flags
+df_abertos = df_filtrado_alertas.copy()
 
 if not df_abertos.empty:
     # Cálculos de Alerta e Tempo Restante
@@ -67,17 +89,17 @@ else:
     df_abertos['SLA_Alerta'] = False
 
 if df_abertos.empty:
-    st.success("🎉 Nenhum chamado pendente para a seleção atual!")
+    st.success("🎉 Nenhum chamado encontrado para os filtros atuais!")
 else:
     # ---- KPIs Principais ----
-    st.subheader("KPIs de Pendências")
+    st.subheader("KPIs dos Chamados Selecionados")
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
     
     total_abertos = len(df_abertos)
     total_fora_sla = df_abertos['SLA_Estourado'].sum()
     total_em_alerta = df_abertos['SLA_Alerta'].sum()
     
-    col_kpi1.metric("Total de Chamados Pendentes", total_abertos)
+    col_kpi1.metric("Total de Chamados na Lista", total_abertos)
     col_kpi2.metric("Total Fora do SLA (Estourado)", f"{total_fora_sla} 🚨")
     col_kpi3.metric("Total em Alerta (Próx. 4h)", f"{total_em_alerta} ⚠️")
 
@@ -98,7 +120,7 @@ else:
     col_alerta4.metric("Abertos há 22h", f"{abertos_22h} 🚨")
     
     # ---- Tabela de Chamados Pendentes ----
-    st.subheader("Lista de Chamados Pendentes (Ordenado por mais antigo)")
+    st.subheader("Lista de Chamados (Ordenado por mais antigo)")
     
     colunas_para_mostrar = [
         config.COLUNA_ID_CLIENTE, config.COLUNA_NOME_CLIENTE, config.COLUNA_ASSUNTO,
