@@ -5,16 +5,15 @@ import config # <-- Importa o arquivo de configuração
 st.set_page_config(layout="wide")
 st.title("🚨 Painel de Alertas e Pendências (SLA 24h)")
 
-# --- MUDANÇA AQUI ---
-# 1. Verifica se o DF PROCESSADO (não filtrado) existe
+# Verifica se o DF PROCESSADO (não filtrado) existe
 if 'df_processado' not in st.session_state or st.session_state['df_processado'].empty:
     st.error("Por favor, carregue um arquivo na página 'Visão Geral' primeiro.")
     st.stop()
 
-# 2. Busca o DF PROCESSADO COMPLETO
+# Busca o DF PROCESSADO COMPLETO
 df_processado = st.session_state['df_processado']
 
-# ---- 3. (NOVO) CRIA FILTROS PRÓPRIOS PARA ESTA PÁGINA ----
+# ---- (NOVO) CRIA FILTROS PRÓPRIOS PARA ESTA PÁGINA ----
 st.sidebar.subheader("Filtros do Painel de Alertas")
 df_filtrado_alertas = df_processado.copy() # Começa com todos os dados
 
@@ -40,10 +39,8 @@ if config.COLUNA_ASSUNTO in df_processado.columns:
         default=[],
         key='alertas_assunto' # Chave única
     )
-# Nota: Não adicionamos filtro de Status aqui, pois esta página já
-# filtra automaticamente pela lista STATUS_ABERTOS do config.py
 
-# --- 4. (NOVO) Aplica os filtros desta página ---
+# --- (NOVO) Aplica os filtros desta página ---
 if cidades_selecionadas:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_CIDADE].isin(cidades_selecionadas)]
 if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado_alertas.columns:
@@ -56,8 +53,7 @@ if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado_alertas.column
 
 st.info(f"Focando em status: {', '.join(config.STATUS_ABERTOS)}.")
 
-# --- MUDANÇA AQUI ---
-# 5. Usa o dataframe filtrado DESTA PÁGINA (df_filtrado_alertas)
+# Usa o dataframe filtrado DESTA PÁGINA (df_filtrado_alertas)
 df_abertos = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(config.STATUS_ABERTOS)].copy()
 
 if not df_abertos.empty:
