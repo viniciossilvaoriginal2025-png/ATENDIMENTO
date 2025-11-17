@@ -113,19 +113,17 @@ if config.COLUNA_ASSUNTO in df.columns:
         key='main_assunto' 
     )
 
-# --- MUDANÇA AQUI: Filtro de Status trocado para Checkbox ---
+# --- Filtro de Status com Checkbox (Flags) ---
 status_selecionados = []
 if config.COLUNA_STATUS in df.columns:
     st.sidebar.subheader(f"Filtrar por {config.COLUNA_STATUS}")
     opcoes_status = sorted(df[config.COLUNA_STATUS].dropna().unique())
     
-    # Cria uma "flag" (checkbox) para cada status
     for status in opcoes_status:
         # Default=True significa que todos vêm marcados
         if st.sidebar.checkbox(status, value=True, key=f"main_status_{status}"):
             status_selecionados.append(status)
-# --- FIM DA MUDANÇA ---
-
+# --- FIM DO FILTRO DE FLAGS ---
 
 # --- Lógica de Filtro ---
 if cidades_selecionadas:
@@ -134,16 +132,8 @@ if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
 if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
-
-# --- MUDANÇA AQUI: Lógica de filtro para Checkbox ---
-# Se o usuário desmarcar todas as caixas, a lista fica vazia e o filtro mostra tudo.
-# Para evitar isso, aplicamos o filtro se *alguma* seleção (mesmo que todas) foi feita.
 if config.COLUNA_STATUS in df_filtrado.columns:
-    # O filtro agora é sempre aplicado. Se o usuário desmarcar tudo, não verá nada.
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_STATUS].isin(status_selecionados)]
-# --- FIM DA MUDANÇA ---
-
-# (Não precisamos salvar o df_filtrado no session_state)
 
 # ---- SEÇÃO 1: Métricas Gerais (Agendamento / Encaminhamento) ----
 st.header("Métricas Gerais de Tempo (Baseado nos Filtros)")
