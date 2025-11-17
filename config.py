@@ -12,8 +12,8 @@ COLUNA_AGENDAMENTO = "Agendamento Visita"
 COLUNA_TECNICO = "Tecnico Visita"
 
 # --- CONFIGURAÇÃO DE ALERTA E SLA ---
-# Status correto que você informou
-STATUS_ABERTOS = ["VISITA_AGENDADA"] 
+# A lista STATUS_ABERTOS foi removida.
+# Agora os filtros de "flag" em cada página decidem o que é pendente.
 SLA_SEGUNDOS = 24 * 60 * 60  # 24 horas
 ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 
