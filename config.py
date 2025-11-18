@@ -1,6 +1,6 @@
 import pandas as pd
 import folium 
-from folium import DivIcon 
+from folium import DivIcon # Necessário para os números
 from branca.element import Template, MacroElement
 
 # ---- Nomes das Colunas ----
@@ -24,27 +24,39 @@ ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 # --- CONFIGURAÇÃO DE CORES (SEMAFORO POR CATEGORIA) ---
 CORES_CATEGORIA = {
     'ATIVACAO': {
-        'safe': '#228B22', 'alert': '#FFD700', 'overdue': '#FF4500', 
+        'safe': '#228B22',    
+        'alert': '#FFD700',   
+        'overdue': '#FF4500', 
         'label': 'Ativação Inicial'
     },
     'MUDANCA': {
-        'safe': '#1E90FF', 'alert': '#87CEFA', 'overdue': '#00008B', 
+        'safe': '#1E90FF',    
+        'alert': '#87CEFA',   
+        'overdue': '#00008B', 
         'label': 'Mudança Endereço'
     },
     'MANUTENCAO': {
-        'safe': '#B22222', 'alert': '#F08080', 'overdue': '#800000', 
+        'safe': '#B22222',    
+        'alert': '#F08080',   
+        'overdue': '#800000', 
         'label': 'Manutenção Ext.'
     },
     'SERVICOS': {
-        'safe': '#9370DB', 'alert': '#DDA0DD', 'overdue': '#4B0082', 
+        'safe': '#9370DB',    
+        'alert': '#DDA0DD',   
+        'overdue': '#4B0082', 
         'label': 'Serviços Extras'
     },
     'DESCONEXAO': {
-        'safe': '#008080', 'alert': '#40E0D0', 'overdue': '#004d4d',
+        'safe': '#008080',    
+        'alert': '#40E0D0',   
+        'overdue': '#004d4d', 
         'label': 'Desconexão/Recolh.'
     },
     'DEFAULT': {
-        'safe': 'gray', 'alert': 'lightgray', 'overdue': 'black',
+        'safe': 'gray', 
+        'alert': 'lightgray', 
+        'overdue': 'black',
         'label': 'Outros'
     }
 }
@@ -106,22 +118,24 @@ def obter_dados_cor(row):
 
 # ---- HELPER: OBTER COR DO TEXTO (PRETO/BRANCO) ----
 def get_text_color(bg_color):
+    # Lógica simples para cores claras vs escuras
     light_colors = ['#FFD700', '#87CEFA', '#F08080', '#DDA0DD', '#40E0D0', 'lightgray', 'white']
     return 'black' if bg_color in light_colors else 'white'
 
-# ---- CRIAR MAPA FOLIUM COM PRIORIDADE ----
+# ---- CRIAR MAPA FOLIUM COM PRIORIDADE (NUMERAÇÃO) ----
 def criar_mapa_folium(df_mapa):
     if df_mapa.empty:
         return folium.Map(location=[-15.788497, -47.879873], zoom_start=4)
 
-    # REMOVIDO: O df_mapa já está ordenado na página 2 agora.
+    # 1. ORDENAÇÃO POR PRIORIDADE (Mais antigo primeiro)
+    if 'Tempo_Decorrido_Segundos' in df_mapa.columns:
+        df_mapa = df_mapa.sort_values(by='Tempo_Decorrido_Segundos', ascending=False).reset_index(drop=True)
     
     map_center = [df_mapa[COLUNA_LATITUDE].mean(), df_mapa[COLUNA_LONGITUDE].mean()]
     m = folium.Map(location=map_center, zoom_start=12)
 
     for idx, row in df_mapa.iterrows():
-        # LÊ O NÚMERO DA PRIORIDADE DA COLUNA
-        prioridade = row.get('Prioridade', idx + 1)
+        prioridade = idx + 1
         
         cor_fundo = obter_dados_cor(row)
         cor_texto = get_text_color(cor_fundo)
