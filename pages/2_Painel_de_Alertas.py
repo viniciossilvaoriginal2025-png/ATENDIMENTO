@@ -48,7 +48,6 @@ if config.COLUNA_STATUS in df_processado.columns:
     opcoes_status = sorted(df_processado[config.COLUNA_STATUS].dropna().unique())
     
     for status in opcoes_status:
-        # O default é True apenas para o status "VISITA_AGENDADA"
         is_default = (status == "VISITA_AGENDADA")
         if st.sidebar.checkbox(status, value=is_default, key=f"alertas_status_{status}"):
             status_selecionados.append(status)
@@ -63,22 +62,27 @@ if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado_alertas.column
 if config.COLUNA_STATUS in df_filtrado_alertas.columns:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(status_selecionados)]
 
-# ---- Início da Lógica da Página de Alertas ----
-
+# ---- Lógica da Página ----
 df_abertos = df_filtrado_alertas.copy()
 
 if not df_abertos.empty:
-    # 1. Cálculos de Alerta Dinâmico
+    # 1. ORDENAÇÃO E NUMERAÇÃO (CORREÇÃO DE INSTABILIDADE)
+    df_abertos = df_abertos.sort_values(
+        by='Tempo_Decorrido_Segundos', 
+        ascending=False, 
+        na_position='last' # Garante que NaNs (erros) não quebrem a prioridade
+    ).reset_index(drop=True)
+    df_abertos.insert(0, 'Prioridade', df_abertos.index + 1)
+    
+    # 2. Cálculos de SLA
+    df_abertos['Tempo_Restante_Segundos'] = df_abertos['SLA_Total_Segundos'] - df_abertos['Tempo_Decorrido_Segundos']
     df_abertos['SLA_Estourado'] = df_abertos['Tempo_Restante_Segundos'] < 0
-    # MUDANÇA: Usa a coluna 'SLA_Alerta_Segundos' calculada dinamicamente
     df_abertos['SLA_Alerta'] = df_abertos.apply(
         lambda row: row['Tempo_Restante_Segundos'] > 0 and 
                     row['Tempo_Restante_Segundos'] <= row['SLA_Alerta_Segundos'], axis=1
     )
-else:
-    df_abertos['Tempo_Restante_Segundos'] = pd.NaT
-    df_abertos['SLA_Estourado'] = False
-    df_abertos['SLA_Alerta'] = False
+    
+    df_abertos['Ação'] = 'Aberto'
 
 if df_abertos.empty:
     st.success("🎉 Nenhum chamado encontrado para os filtros atuais!")
@@ -111,7 +115,7 @@ else:
     col_alerta3.metric("Abertos há 21h", f"{abertos_21h} 🔴")
     col_alerta4.metric("Abertos há 22h", f"{abertos_22h} 🚨")
     
-    # ---- Mapa de Alertas (Alterado) ----
+    # ---- Mapa de Alertas ----
     st.subheader("Mapa de Chamados Pendentes")
     if config.COLUNA_LATITUDE in df_abertos.columns and config.COLUNA_LONGITUDE in df_abertos.columns:
         df_mapa_alertas = df_abertos.dropna(subset=[config.COLUNA_LATITUDE, config.COLUNA_LONGITUDE])
@@ -126,40 +130,48 @@ else:
     # ---- Tabela de Chamados Pendentes ----
     st.subheader("Lista de Chamados (Ordenado por Prioridade)")
     
-    colunas_para_mostrar = [
-        'Prioridade', config.COLUNA_ID_CLIENTE, config.COLUNA_NOME_CLIENTE, config.COLUNA_ASSUNTO,
-        config.COLUNA_STATUS, config.COLUNA_ABERTURA,
-        'Tempo_Decorrido_Segundos', 'Tempo_Restante_Segundos', 
-        'SLA_Estourado', 'SLA_Alerta'
-    ]
-    if config.COLUNA_TECNICO in df_abertos.columns:
-        colunas_para_mostrar.insert(5, config.COLUNA_TECNICO) 
-    
-    colunas_para_mostrar = [col for col in colunas_para_mostrar if col in df_abertos.columns]
-    df_display = df_abertos[colunas_para_mostrar].sort_values(by='Tempo_Decorrido_Segundos', ascending=False)
-    
+    # Cria os valores formatados para exibição
+    df_display = df_abertos.copy()
     df_display['Data Abertura'] = df_display[config.COLUNA_ABERTURA].dt.strftime('%d/%m/%y %H:%M') 
     df_display['Tempo Aberto (H:M:S)'] = df_display['Tempo_Decorrido_Segundos'].apply(config.formatar_hms)
     df_display['Tempo Restante SLA (H:M:S)'] = df_display['Tempo_Restante_Segundos'].apply(config.formatar_hms)
     
+    # Colunas finais para st.data_editor
     colunas_finais = [
         'Prioridade', config.COLUNA_ID_CLIENTE, config.COLUNA_NOME_CLIENTE, config.COLUNA_ASSUNTO, 
-        config.COLUNA_STATUS, 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)'
+        config.COLUNA_STATUS, 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)', 'Ação'
     ]
     if config.COLUNA_TECNICO in df_display.columns:
         colunas_finais.insert(5, config.COLUNA_TECNICO) 
     
-    colunas_finais = [col for col in colunas_finais if col in df_display.columns or col in ['Prioridade', 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)']]
+    colunas_finais = [col for col in colunas_finais if col in df_display.columns or col in ['Prioridade', 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)', 'Ação']]
 
-    colunas_para_esconder = [
-        'Tempo_Decorrido_Segundos', 'Tempo_Restante_Segundos', 
-        'SLA_Estourado', 'SLA_Alerta'
-    ]
-    colunas_para_esconder = [col for col in colunas_para_esconder if col in df_display.columns]
-
-    st.dataframe(
-        df_display.style.apply(config.highlight_sla, axis=1) 
-                         .hide(axis="columns", subset=colunas_para_esconder), 
+    editor_key = 'action_editor' 
+    
+    st.data_editor(
+        df_display[colunas_finais],
+        column_config={
+            "Prioridade": st.column_config.Column("Priori.", width="small"),
+            "Ação": st.column_config.SelectboxColumn(
+                "Concluir Atendimento?",
+                width="small",
+                options=['Aberto', 'Concluído'],
+                required=True,
+            )
+        },
+        hide_index=True,
         use_container_width=True,
-        column_order=colunas_finais 
+        key=editor_key
     )
+    
+    # Lógica para remover os concluídos (Esta é a parte que registra a ação)
+    if st.session_state.get(editor_key, False):
+        edited_data = st.session_state[editor_key]
+        if edited_data.get('edited_rows'):
+            for index, row in edited_data['edited_rows'].items():
+                if row.get('Ação') == 'Concluído':
+                    cliente_id = df_display.iloc[index][config.COLUNA_ID_CLIENTE]
+                    
+                    if cliente_id not in st.session_state.get('concluidos_list', []):
+                        st.session_state.setdefault('concluidos_list', []).append(cliente_id)
+                        st.experimental_rerun()
