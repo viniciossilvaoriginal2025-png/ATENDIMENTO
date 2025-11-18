@@ -1,6 +1,6 @@
 import pandas as pd
 import folium 
-from branca.element import Template, MacroElement # Necessário para a legenda
+from branca.element import Template, MacroElement
 
 # ---- Nomes das Colunas ----
 COLUNA_ID_CLIENTE = "ID Cliente"
@@ -16,75 +16,96 @@ COLUNA_LATITUDE = "latitude"
 COLUNA_LONGITUDE = "longitude"
 
 # --- CONFIGURAÇÃO DE ALERTA E SLA ---
-# Status que define o que é "Pendente" para gerar alertas
 STATUS_ABERTOS = ["VISITA_AGENDADA"] 
 SLA_SEGUNDOS = 24 * 60 * 60  # 24 horas
 ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 
-# --- CONFIGURAÇÃO DE CORES POR CATEGORIA (ASSUNTO) ---
-# As chaves estão em MAIÚSCULAS para garantir a leitura correta
+# --- CONFIGURAÇÃO AVANÇADA DE CORES (SEMAFORO POR CATEGORIA) ---
+# Cores em formato HEX ou Nome CSS
 CORES_CATEGORIA = {
-    # Ativação = Verde
-    'ATIVAÇÃO INICIAL (ADAPTER)': 'green',
-    'ATIVACAO INICIAL (ADAPTER)': 'green', 
-    
-    # Mudança de Endereço = Laranja
-    'MUDANÇA DE ENDEREÇO (ADAPTER)': 'orange',
-    'MUDANCA DE ENDERECO (ADAPTER)': 'orange',
-    
-    # Manutenção = Vermelho Escuro
-    'MANUTENÇÃO EXTERNA (ADAPTER)': 'darkred',
-    'MANUTENCAO EXTERNA (ADAPTER)': 'darkred',
-    
-    # Serviços Extras = Roxo
-    'SERVIÇOS EXTRAS (ADAPTER)': 'purple',
-    'SERVICOS EXTRAS (ADAPTER)': 'purple',
-    
-    'DEFAULT': 'gray' # Qualquer outro assunto fica cinza
+    'ATIVACAO': {
+        'safe': '#228B22',    # Verde Floresta (No Prazo)
+        'alert': '#FFD700',   # Dourado/Amarelo (Vence em 4h)
+        'overdue': '#FF4500', # Laranja Escuro (Vencido)
+        'label': 'Ativação Inicial'
+    },
+    'MUDANCA': {
+        'safe': '#1E90FF',    # Azul Dodger (No Prazo)
+        'alert': '#87CEFA',   # Azul Claro (Vence em 4h)
+        'overdue': '#00008B', # Azul Marinho (Vencido)
+        'label': 'Mudança Endereço'
+    },
+    'MANUTENCAO': {
+        'safe': '#B22222',    # Tijolo/Vermelho (No Prazo)
+        'alert': '#F08080',   # Coral Claro (Vence em 4h)
+        'overdue': '#800000', # Marrom/Vinho (Vencido)
+        'label': 'Manutenção Ext.'
+    },
+    'SERVICOS': {
+        'safe': '#9370DB',    # Roxo Médio (No Prazo)
+        'alert': '#DDA0DD',   # Ameixa/Lilás (Vence em 4h)
+        'overdue': '#4B0082', # Índigo/Roxo Escuro (Vencido)
+        'label': 'Serviços Extras'
+    },
+    'DEFAULT': {
+        'safe': 'gray', 
+        'alert': 'lightgray', 
+        'overdue': 'black',
+        'label': 'Outros'
+    }
+}
+
+# Mapeamento de nomes do Excel para as chaves acima
+MAPA_NOMES = {
+    'ATIVAÇÃO INICIAL (ADAPTER)': 'ATIVACAO',
+    'ATIVACAO INICIAL (ADAPTER)': 'ATIVACAO',
+    'MUDANÇA DE ENDEREÇO (ADAPTER)': 'MUDANCA',
+    'MUDANCA DE ENDERECO (ADAPTER)': 'MUDANCA',
+    'MANUTENÇÃO EXTERNA (ADAPTER)': 'MANUTENCAO',
+    'MANUTENCAO EXTERNA (ADAPTER)': 'MANUTENCAO',
+    'SERVIÇOS EXTRAS (ADAPTER)': 'SERVICOS',
+    'SERVICOS EXTRAS (ADAPTER)': 'SERVICOS'
 }
 
 # ---- FUNÇÃO HELPER DE FORMATAÇÃO DE TEMPO ----
 def formatar_hms(segundos_totais):
-    if pd.isna(segundos_totais):
-        return "N/A"
+    if pd.isna(segundos_totais): return "N/A"
     segundos_totais = int(segundos_totais)
-    sinal = ''
-    if segundos_totais < 0:
-        sinal = '-'
-        segundos_totais = abs(segundos_totais)
+    sinal = '-' if segundos_totais < 0 else ''
+    segundos_totais = abs(segundos_totais)
     horas = segundos_totais // 3600
-    minutos_restantes = segundos_totais % 3600
-    minutos = minutos_restantes // 60
-    segundos = minutos_restantes % 60
+    minutos = (segundos_totais % 3600) // 60
+    segundos = segundos_totais % 60
     return f"{sinal}{horas:02}:{minutos:02}:{segundos:02}"
 
-# ---- FUNÇÃO HELPER DE ESTILO (TABELA) ----
+# ---- ESTILO DA TABELA (Mantemos simples: Vermelho/Amarelo) ----
 def highlight_sla(linha):
-    if linha['SLA_Estourado'] == True:
-        return ['background-color: #FFC7CE'] * len(linha) # Vermelho claro
-    elif linha['SLA_Alerta'] == True:
-        return ['background-color: #E6F3FF'] * len(linha) # Azul claro
+    if linha.get('SLA_Estourado'):
+        return ['background-color: #FFC7CE'] * len(linha) 
+    elif linha.get('SLA_Alerta'):
+        return ['background-color: #FFF3CD'] * len(linha) 
+    return [''] * len(linha)
+
+# ---- OBTER COR DO MARCADOR (NOVA LÓGICA) ----
+def obter_dados_cor(row):
+    # 1. Descobre a categoria
+    assunto_raw = str(row[COLUNA_ASSUNTO]).strip().upper()
+    chave_categoria = MAPA_NOMES.get(assunto_raw, 'DEFAULT')
+    esquema = CORES_CATEGORIA.get(chave_categoria, CORES_CATEGORIA['DEFAULT'])
+    
+    # 2. Decide o estado (Vencido, Alerta, Safe)
+    # Se não tiver dados de SLA (Visão Geral), assume Safe
+    if 'SLA_Estourado' not in row:
+        return esquema['safe']
+
+    if row['SLA_Estourado']:
+        return esquema['overdue']
+    elif row['SLA_Alerta']:
+        return esquema['alert']
     else:
-        return [''] * len(linha)
+        return esquema['safe']
 
-# ---- FUNÇÃO HELPER: OBTER COR DO MARCADOR (MAPA) ----
-def obter_cor_marcador(row):
-    # 1. Prioridade Máxima: VENCIDO (> 24h) -> Branco
-    if 'SLA_Estourado' in row and row['SLA_Estourado']:
-        return "white"
-    
-    # 2. Prioridade Média: ALERTA (Faltam < 4h) -> Azul
-    if 'SLA_Alerta' in row and row['SLA_Alerta']:
-        return "blue"
-    
-    # 3. Prioridade Normal: COR DA CATEGORIA
-    # Pega o assunto, converte para maiúsculo e remove espaços extras
-    assunto = str(row[COLUNA_ASSUNTO]).strip().upper()
-    
-    # Procura no dicionário, se não achar, usa DEFAULT
-    return CORES_CATEGORIA.get(assunto, CORES_CATEGORIA['DEFAULT'])
-
-# ---- FUNÇÃO HELPER PARA CRIAR O MAPA COM LEGENDA ----
+# ---- CRIAR MAPA FOLIUM ----
 def criar_mapa_folium(df_mapa):
     if df_mapa.empty:
         return folium.Map(location=[-15.788497, -47.879873], zoom_start=4)
@@ -93,71 +114,80 @@ def criar_mapa_folium(df_mapa):
     m = folium.Map(location=map_center, zoom_start=10)
 
     for idx, row in df_mapa.iterrows():
+        cor_final = obter_dados_cor(row)
         
-        # Define a cor usando a lógica de prioridade (Vencido > Alerta > Categoria)
-        cor_fundo = obter_cor_marcador(row)
+        tecnico = row.get(COLUNA_TECNICO, "N/A")
+        if pd.isna(tecnico): tecnico = "N/A"
         
-        # Define a borda (preta para branco para dar destaque, senão igual ao fundo)
-        cor_borda = "black" if cor_fundo == "white" else cor_fundo
-        
-        tecnico_nome = row.get(COLUNA_TECNICO, "N/A") 
-        if pd.isna(tecnico_nome): tecnico_nome = "N/A"
-        
-        # Formatações de tempo
-        tempo_aberto_str = "N/A"
-        if 'Tempo_Decorrido_Segundos' in row and pd.notna(row['Tempo_Decorrido_Segundos']):
-            tempo_aberto_str = formatar_hms(row['Tempo_Decorrido_Segundos'])
-
-        tempo_restante_str = ""
+        t_aberto = formatar_hms(row.get('Tempo_Decorrido_Segundos', pd.NA))
+        t_restante = ""
         if 'Tempo_Restante_Segundos' in row and pd.notna(row['Tempo_Restante_Segundos']):
-            tempo_restante_str = f"<b>Restante SLA:</b> {formatar_hms(row['Tempo_Restante_Segundos'])}<br>"
-            
+            t_restante = f"<b>Restante:</b> {formatar_hms(row['Tempo_Restante_Segundos'])}<br>"
+
         popup_html = f"""
-        <b>ID:</b> {row[COLUNA_ID_CLIENTE]}<br>
-        <b>Técnico:</b> {tecnico_nome}<br>
-        <b>Assunto:</b> {row[COLUNA_ASSUNTO]}<br>
-        <hr style='margin: 3px 0;'>
-        <b>Aberto há:</b> {tempo_aberto_str}<br>
-        {tempo_restante_str}
+        <div style="font-family: sans-serif; font-size: 12px;">
+            <b>ID:</b> {row[COLUNA_ID_CLIENTE]}<br>
+            <b>Técnico:</b> {tecnico}<br>
+            <b>Assunto:</b> {row[COLUNA_ASSUNTO]}<br>
+            <hr style='margin: 4px 0;'>
+            <b>Aberto há:</b> {t_aberto}<br>
+            {t_restante}
+        </div>
         """
         
         folium.CircleMarker(
             location=[row[COLUNA_LATITUDE], row[COLUNA_LONGITUDE]],
-            radius=6,
-            color=cor_borda,
+            radius=7,
+            color='black',      # Borda preta fina para contraste
+            weight=1,
             fill=True,
-            fill_color=cor_fundo,
+            fill_color=cor_final,
             fill_opacity=0.9,
             popup=folium.Popup(popup_html, max_width=300)
         ).add_to(m)
 
-    # ---- LEGENDA (ATUALIZADA COM SEUS NOMES) ----
-    template_legenda = """
-    {% macro html(this, kwargs) %}
+    # ---- LEGENDA TABELA HTML ----
+    # Monta as linhas da tabela dinamicamente com base no config
+    rows_html = ""
+    # Ordem de exibição
+    keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DEFAULT']
+    
+    for key in keys_order:
+        cor = CORES_CATEGORIA[key]
+        rows_html += f"""
+        <tr>
+            <td style="padding:3px;">{cor['label']}</td>
+            <td style="text-align:center;"><span style="background:{cor['safe']}; width:12px; height:12px; display:inline-block; border-radius:50%; border:1px solid #ccc;"></span></td>
+            <td style="text-align:center;"><span style="background:{cor['alert']}; width:12px; height:12px; display:inline-block; border-radius:50%; border:1px solid #ccc;"></span></td>
+            <td style="text-align:center;"><span style="background:{cor['overdue']}; width:12px; height:12px; display:inline-block; border-radius:50%; border:1px solid #ccc;"></span></td>
+        </tr>
+        """
+
+    template_legenda = f"""
+    {{% macro html(this, kwargs) %}}
     <div style="
         position: fixed; 
-        bottom: 30px; left: 30px; width: 240px; height: auto; 
-        z-index:9999; font-size:13px;
+        bottom: 30px; left: 30px; width: auto; height: auto; 
+        z-index:9999; font-size:12px; font-family: sans-serif;
         background-color: white;
-        border: 2px solid grey;
-        border-radius: 6px;
+        border: 2px solid #666;
+        border-radius: 8px;
         padding: 10px;
         opacity: 0.95;
         box-shadow: 3px 3px 5px rgba(0,0,0,0.3);
-        font-family: sans-serif;
         ">
-        <b>Status do Prazo (Prioridade)</b><br>
-        <i style="background:white; border:2px solid black; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Vencido (>24h)<br>
-        <i style="background:blue; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Alerta (< 4h restantes)<br>
-        <hr style="margin: 8px 0;">
-        <b>No Prazo (Por Categoria)</b><br>
-        <i style="background:green; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Ativação Inicial<br>
-        <i style="background:orange; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Mudança de Endereço<br>
-        <i style="background:darkred; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Manutenção Externa<br>
-        <i style="background:purple; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Serviços Extras<br>
-        <i style="background:gray; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Outros<br>
+        <b style="font-size:14px;">Legenda de Status</b>
+        <table style="width:100%; margin-top:5px;">
+            <tr style="font-weight:bold; font-size:10px; color:#555;">
+                <td style="text-align:left;">Categoria</td>
+                <td style="padding:0 5px;">No Prazo</td>
+                <td style="padding:0 5px;">Alerta 4h</td>
+                <td style="padding:0 5px;">Vencido</td>
+            </tr>
+            {rows_html}
+        </table>
     </div>
-    {% endmacro %}
+    {{% endmacro %}}
     """
     macro = MacroElement()
     macro._template = Template(template_legenda)
