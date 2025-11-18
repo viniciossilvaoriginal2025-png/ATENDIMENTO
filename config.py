@@ -46,6 +46,12 @@ CORES_CATEGORIA = {
         'overdue': '#4B0082', # Índigo
         'label': 'Serviços Extras'
     },
+    'DESCONEXAO': {
+        'safe': '#008080',    # Teal (Azul Petróleo)
+        'alert': '#40E0D0',   # Turquesa (Texto preto)
+        'overdue': '#004d4d', # Teal Escuro
+        'label': 'Desconexão/Recolh.'
+    },
     'DEFAULT': {
         'safe': 'gray', 
         'alert': 'lightgray', 
@@ -55,15 +61,22 @@ CORES_CATEGORIA = {
 }
 
 # Mapeamento de nomes do Excel para as chaves acima
+# As chaves devem ser MAIÚSCULAS para garantir o match
 MAPA_NOMES = {
     'ATIVAÇÃO INICIAL (ADAPTER)': 'ATIVACAO',
     'ATIVACAO INICIAL (ADAPTER)': 'ATIVACAO',
+    
     'MUDANÇA DE ENDEREÇO (ADAPTER)': 'MUDANCA',
     'MUDANCA DE ENDERECO (ADAPTER)': 'MUDANCA',
+    
     'MANUTENÇÃO EXTERNA (ADAPTER)': 'MANUTENCAO',
     'MANUTENCAO EXTERNA (ADAPTER)': 'MANUTENCAO',
+    
     'SERVIÇOS EXTRAS (ADAPTER)': 'SERVICOS',
-    'SERVICOS EXTRAS (ADAPTER)': 'SERVICOS'
+    'SERVICOS EXTRAS (ADAPTER)': 'SERVICOS',
+    
+    'DESCONEXÃO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO',
+    'DESCONEXAO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO'
 }
 
 # ---- FUNÇÃO HELPER DE FORMATAÇÃO DE TEMPO ----
@@ -85,9 +98,6 @@ def get_esquema_cor(row):
 
 # ---- ESTILO DA TABELA (CORRIGIDO PARA APLICAR CORES DAS CATEGORIAS) ----
 def highlight_sla(row):
-    """
-    Aplica cor de fundo E cor da fonte na tabela, baseado na categoria e SLA.
-    """
     esquema = get_esquema_cor(row)
     
     # Se não tiver dados de SLA (Página Geral), usa a cor 'Safe'
@@ -98,15 +108,14 @@ def highlight_sla(row):
     # Lógica de Prioridade
     elif row['SLA_Estourado']:
         bg_color = esquema['overdue']
-        text_color = 'white' # Fundo escuro -> Texto branco
+        text_color = 'white' 
     elif row['SLA_Alerta']:
         bg_color = esquema['alert']
-        text_color = 'black' # Fundo claro -> Texto preto
+        text_color = 'black' 
     else:
         bg_color = esquema['safe']
-        text_color = 'white' # Fundo médio/escuro -> Texto branco
+        text_color = 'white' 
 
-    # Aplica o estilo CSS para todas as células da linha
     return [f'background-color: {bg_color}; color: {text_color}; font-weight: bold'] * len(row)
 
 # ---- OBTER COR DO MARCADOR (PARA O MAPA) ----
@@ -162,7 +171,8 @@ def criar_mapa_folium(df_mapa):
 
     # ---- LEGENDA TABELA HTML ----
     rows_html = ""
-    keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DEFAULT']
+    # Adicionei DESCONEXAO na ordem
+    keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DESCONEXAO', 'DEFAULT']
     
     for key in keys_order:
         cor = CORES_CATEGORIA[key]
