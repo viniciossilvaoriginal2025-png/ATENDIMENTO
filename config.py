@@ -21,30 +21,29 @@ SLA_SEGUNDOS = 24 * 60 * 60  # 24 horas
 ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 
 # --- CONFIGURAÇÃO AVANÇADA DE CORES (SEMAFORO POR CATEGORIA) ---
-# Cores em formato HEX ou Nome CSS
 CORES_CATEGORIA = {
     'ATIVACAO': {
-        'safe': '#228B22',    # Verde Floresta (No Prazo)
-        'alert': '#FFD700',   # Dourado/Amarelo (Vence em 4h)
-        'overdue': '#FF4500', # Laranja Escuro (Vencido)
+        'safe': '#228B22',    # Verde Floresta
+        'alert': '#FFD700',   # Dourado (Texto preto)
+        'overdue': '#FF4500', # Laranja Escuro
         'label': 'Ativação Inicial'
     },
     'MUDANCA': {
-        'safe': '#1E90FF',    # Azul Dodger (No Prazo)
-        'alert': '#87CEFA',   # Azul Claro (Vence em 4h)
-        'overdue': '#00008B', # Azul Marinho (Vencido)
+        'safe': '#1E90FF',    # Azul Dodger
+        'alert': '#87CEFA',   # Azul Claro (Texto preto)
+        'overdue': '#00008B', # Azul Marinho
         'label': 'Mudança Endereço'
     },
     'MANUTENCAO': {
-        'safe': '#B22222',    # Tijolo/Vermelho (No Prazo)
-        'alert': '#F08080',   # Coral Claro (Vence em 4h)
-        'overdue': '#800000', # Marrom/Vinho (Vencido)
+        'safe': '#B22222',    # Tijolo
+        'alert': '#F08080',   # Coral Claro (Texto preto)
+        'overdue': '#800000', # Marrom
         'label': 'Manutenção Ext.'
     },
     'SERVICOS': {
-        'safe': '#9370DB',    # Roxo Médio (No Prazo)
-        'alert': '#DDA0DD',   # Ameixa/Lilás (Vence em 4h)
-        'overdue': '#4B0082', # Índigo/Roxo Escuro (Vencido)
+        'safe': '#9370DB',    # Roxo Médio
+        'alert': '#DDA0DD',   # Ameixa/Lilás (Texto preto)
+        'overdue': '#4B0082', # Índigo
         'label': 'Serviços Extras'
     },
     'DEFAULT': {
@@ -78,32 +77,47 @@ def formatar_hms(segundos_totais):
     segundos = segundos_totais % 60
     return f"{sinal}{horas:02}:{minutos:02}:{segundos:02}"
 
-# ---- ESTILO DA TABELA (Mantemos simples: Vermelho/Amarelo) ----
-def highlight_sla(linha):
-    if linha.get('SLA_Estourado'):
-        return ['background-color: #FFC7CE'] * len(linha) 
-    elif linha.get('SLA_Alerta'):
-        return ['background-color: #FFF3CD'] * len(linha) 
-    return [''] * len(linha)
-
-# ---- OBTER COR DO MARCADOR (NOVA LÓGICA) ----
-def obter_dados_cor(row):
-    # 1. Descobre a categoria
-    assunto_raw = str(row[COLUNA_ASSUNTO]).strip().upper()
+# ---- FUNÇÃO AUXILIAR PARA IDENTIFICAR O ESQUEMA DE COR ----
+def get_esquema_cor(row):
+    assunto_raw = str(row.get(COLUNA_ASSUNTO, '')).strip().upper()
     chave_categoria = MAPA_NOMES.get(assunto_raw, 'DEFAULT')
-    esquema = CORES_CATEGORIA.get(chave_categoria, CORES_CATEGORIA['DEFAULT'])
-    
-    # 2. Decide o estado (Vencido, Alerta, Safe)
-    # Se não tiver dados de SLA (Visão Geral), assume Safe
-    if 'SLA_Estourado' not in row:
-        return esquema['safe']
+    return CORES_CATEGORIA.get(chave_categoria, CORES_CATEGORIA['DEFAULT'])
 
-    if row['SLA_Estourado']:
-        return esquema['overdue']
+# ---- ESTILO DA TABELA (CORRIGIDO PARA APLICAR CORES DAS CATEGORIAS) ----
+def highlight_sla(row):
+    """
+    Aplica cor de fundo E cor da fonte na tabela, baseado na categoria e SLA.
+    """
+    esquema = get_esquema_cor(row)
+    
+    # Se não tiver dados de SLA (Página Geral), usa a cor 'Safe'
+    if 'SLA_Estourado' not in row:
+        bg_color = esquema['safe']
+        text_color = 'white'
+    
+    # Lógica de Prioridade
+    elif row['SLA_Estourado']:
+        bg_color = esquema['overdue']
+        text_color = 'white' # Fundo escuro -> Texto branco
     elif row['SLA_Alerta']:
-        return esquema['alert']
+        bg_color = esquema['alert']
+        text_color = 'black' # Fundo claro -> Texto preto
     else:
-        return esquema['safe']
+        bg_color = esquema['safe']
+        text_color = 'white' # Fundo médio/escuro -> Texto branco
+
+    # Aplica o estilo CSS para todas as células da linha
+    return [f'background-color: {bg_color}; color: {text_color}; font-weight: bold'] * len(row)
+
+# ---- OBTER COR DO MARCADOR (PARA O MAPA) ----
+def obter_dados_cor(row):
+    esquema = get_esquema_cor(row)
+    
+    if 'SLA_Estourado' not in row: return esquema['safe']
+
+    if row['SLA_Estourado']: return esquema['overdue']
+    elif row['SLA_Alerta']: return esquema['alert']
+    else: return esquema['safe']
 
 # ---- CRIAR MAPA FOLIUM ----
 def criar_mapa_folium(df_mapa):
@@ -138,7 +152,7 @@ def criar_mapa_folium(df_mapa):
         folium.CircleMarker(
             location=[row[COLUNA_LATITUDE], row[COLUNA_LONGITUDE]],
             radius=7,
-            color='black',      # Borda preta fina para contraste
+            color='black',      
             weight=1,
             fill=True,
             fill_color=cor_final,
@@ -147,9 +161,7 @@ def criar_mapa_folium(df_mapa):
         ).add_to(m)
 
     # ---- LEGENDA TABELA HTML ----
-    # Monta as linhas da tabela dinamicamente com base no config
     rows_html = ""
-    # Ordem de exibição
     keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DEFAULT']
     
     for key in keys_order:
