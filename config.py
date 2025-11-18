@@ -1,5 +1,6 @@
 import pandas as pd
 import folium 
+from folium import DivIcon # Necessário para os números
 from branca.element import Template, MacroElement
 
 # ---- Nomes das Colunas ----
@@ -20,35 +21,35 @@ STATUS_ABERTOS = ["VISITA_AGENDADA"]
 SLA_SEGUNDOS = 24 * 60 * 60  # 24 horas
 ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 
-# --- CONFIGURAÇÃO AVANÇADA DE CORES (SEMAFORO POR CATEGORIA) ---
+# --- CONFIGURAÇÃO DE CORES (SEMAFORO POR CATEGORIA) ---
 CORES_CATEGORIA = {
     'ATIVACAO': {
         'safe': '#228B22',    # Verde Floresta
-        'alert': '#FFD700',   # Dourado (Texto preto)
+        'alert': '#FFD700',   # Dourado 
         'overdue': '#FF4500', # Laranja Escuro
         'label': 'Ativação Inicial'
     },
     'MUDANCA': {
         'safe': '#1E90FF',    # Azul Dodger
-        'alert': '#87CEFA',   # Azul Claro (Texto preto)
+        'alert': '#87CEFA',   # Azul Claro 
         'overdue': '#00008B', # Azul Marinho
         'label': 'Mudança Endereço'
     },
     'MANUTENCAO': {
         'safe': '#B22222',    # Tijolo
-        'alert': '#F08080',   # Coral Claro (Texto preto)
+        'alert': '#F08080',   # Coral Claro 
         'overdue': '#800000', # Marrom
         'label': 'Manutenção Ext.'
     },
     'SERVICOS': {
         'safe': '#9370DB',    # Roxo Médio
-        'alert': '#DDA0DD',   # Ameixa/Lilás (Texto preto)
+        'alert': '#DDA0DD',   # Ameixa/Lilás 
         'overdue': '#4B0082', # Índigo
         'label': 'Serviços Extras'
     },
     'DESCONEXAO': {
-        'safe': '#008080',    # Teal (Azul Petróleo)
-        'alert': '#40E0D0',   # Turquesa (Texto preto)
+        'safe': '#008080',    # Teal
+        'alert': '#40E0D0',   # Turquesa 
         'overdue': '#004d4d', # Teal Escuro
         'label': 'Desconexão/Recolh.'
     },
@@ -60,21 +61,15 @@ CORES_CATEGORIA = {
     }
 }
 
-# Mapeamento de nomes do Excel para as chaves acima
-# As chaves devem ser MAIÚSCULAS para garantir o match
 MAPA_NOMES = {
     'ATIVAÇÃO INICIAL (ADAPTER)': 'ATIVACAO',
     'ATIVACAO INICIAL (ADAPTER)': 'ATIVACAO',
-    
     'MUDANÇA DE ENDEREÇO (ADAPTER)': 'MUDANCA',
     'MUDANCA DE ENDERECO (ADAPTER)': 'MUDANCA',
-    
     'MANUTENÇÃO EXTERNA (ADAPTER)': 'MANUTENCAO',
     'MANUTENCAO EXTERNA (ADAPTER)': 'MANUTENCAO',
-    
     'SERVIÇOS EXTRAS (ADAPTER)': 'SERVICOS',
     'SERVICOS EXTRAS (ADAPTER)': 'SERVICOS',
-    
     'DESCONEXÃO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO',
     'DESCONEXAO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO'
 }
@@ -90,22 +85,12 @@ def formatar_hms(segundos_totais):
     segundos = segundos_totais % 60
     return f"{sinal}{horas:02}:{minutos:02}:{segundos:02}"
 
-# ---- FUNÇÃO AUXILIAR PARA IDENTIFICAR O ESQUEMA DE COR ----
-def get_esquema_cor(row):
-    assunto_raw = str(row.get(COLUNA_ASSUNTO, '')).strip().upper()
-    chave_categoria = MAPA_NOMES.get(assunto_raw, 'DEFAULT')
-    return CORES_CATEGORIA.get(chave_categoria, CORES_CATEGORIA['DEFAULT'])
-
-# ---- ESTILO DA TABELA (CORRIGIDO PARA APLICAR CORES DAS CATEGORIAS) ----
+# ---- FUNÇÃO HELPER DE ESTILO (TABELA) ----
 def highlight_sla(row):
     esquema = get_esquema_cor(row)
-    
-    # Se não tiver dados de SLA (Página Geral), usa a cor 'Safe'
     if 'SLA_Estourado' not in row:
         bg_color = esquema['safe']
         text_color = 'white'
-    
-    # Lógica de Prioridade
     elif row['SLA_Estourado']:
         bg_color = esquema['overdue']
         text_color = 'white' 
@@ -115,29 +100,48 @@ def highlight_sla(row):
     else:
         bg_color = esquema['safe']
         text_color = 'white' 
-
     return [f'background-color: {bg_color}; color: {text_color}; font-weight: bold'] * len(row)
 
-# ---- OBTER COR DO MARCADOR (PARA O MAPA) ----
+# ---- HELPER: IDENTIFICAR ESQUEMA DE COR ----
+def get_esquema_cor(row):
+    assunto_raw = str(row.get(COLUNA_ASSUNTO, '')).strip().upper()
+    chave_categoria = MAPA_NOMES.get(assunto_raw, 'DEFAULT')
+    return CORES_CATEGORIA.get(chave_categoria, CORES_CATEGORIA['DEFAULT'])
+
+# ---- HELPER: OBTER COR DO MARCADOR ----
 def obter_dados_cor(row):
     esquema = get_esquema_cor(row)
-    
     if 'SLA_Estourado' not in row: return esquema['safe']
-
     if row['SLA_Estourado']: return esquema['overdue']
     elif row['SLA_Alerta']: return esquema['alert']
     else: return esquema['safe']
 
-# ---- CRIAR MAPA FOLIUM ----
+# ---- HELPER: OBTER COR DO TEXTO (PRETO/BRANCO) ----
+def get_text_color(bg_color):
+    # Lista de cores claras que precisam de texto preto
+    light_colors = ['#FFD700', '#87CEFA', '#F08080', '#DDA0DD', '#40E0D0', 'lightgray', 'white', '#FFF3CD']
+    return 'black' if bg_color in light_colors else 'white'
+
+# ---- CRIAR MAPA FOLIUM COM PRIORIDADE ----
 def criar_mapa_folium(df_mapa):
     if df_mapa.empty:
         return folium.Map(location=[-15.788497, -47.879873], zoom_start=4)
 
+    # 1. ORDENAÇÃO POR PRIORIDADE (Mais antigo primeiro)
+    # O 'Tempo_Decorrido_Segundos' maior significa que está aberto há mais tempo.
+    if 'Tempo_Decorrido_Segundos' in df_mapa.columns:
+        df_mapa = df_mapa.sort_values(by='Tempo_Decorrido_Segundos', ascending=False).reset_index(drop=True)
+    
     map_center = [df_mapa[COLUNA_LATITUDE].mean(), df_mapa[COLUNA_LONGITUDE].mean()]
-    m = folium.Map(location=map_center, zoom_start=10)
+    m = folium.Map(location=map_center, zoom_start=12)
 
     for idx, row in df_mapa.iterrows():
-        cor_final = obter_dados_cor(row)
+        # Prioridade é o índice + 1 (1, 2, 3...)
+        prioridade = idx + 1
+        
+        cor_fundo = obter_dados_cor(row)
+        cor_texto = get_text_color(cor_fundo)
+        cor_borda = "black" if cor_fundo == "white" else cor_fundo # Borda para branco
         
         tecnico = row.get(COLUNA_TECNICO, "N/A")
         if pd.isna(tecnico): tecnico = "N/A"
@@ -147,31 +151,47 @@ def criar_mapa_folium(df_mapa):
         if 'Tempo_Restante_Segundos' in row and pd.notna(row['Tempo_Restante_Segundos']):
             t_restante = f"<b>Restante:</b> {formatar_hms(row['Tempo_Restante_Segundos'])}<br>"
 
+        # HTML para o ícone numerado
+        icon_html = f"""
+        <div style="
+            background-color: {cor_fundo};
+            border: 2px solid {cor_borda};
+            color: {cor_texto};
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-family: sans-serif;
+            font-size: 10pt;
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        ">
+        {prioridade}
+        </div>
+        """
+
         popup_html = f"""
         <div style="font-family: sans-serif; font-size: 12px;">
+            <b style="font-size:14px;">Prioridade #{prioridade}</b><br>
+            <hr style='margin: 4px 0;'>
             <b>ID:</b> {row[COLUNA_ID_CLIENTE]}<br>
             <b>Técnico:</b> {tecnico}<br>
             <b>Assunto:</b> {row[COLUNA_ASSUNTO]}<br>
-            <hr style='margin: 4px 0;'>
             <b>Aberto há:</b> {t_aberto}<br>
             {t_restante}
         </div>
         """
         
-        folium.CircleMarker(
+        folium.Marker(
             location=[row[COLUNA_LATITUDE], row[COLUNA_LONGITUDE]],
-            radius=7,
-            color='black',      
-            weight=1,
-            fill=True,
-            fill_color=cor_final,
-            fill_opacity=0.9,
+            icon=DivIcon(html=icon_html), # Usa o ícone HTML personalizado
             popup=folium.Popup(popup_html, max_width=300)
         ).add_to(m)
 
-    # ---- LEGENDA TABELA HTML ----
+    # ---- LEGENDA ----
     rows_html = ""
-    # Adicionei DESCONEXAO na ordem
     keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DESCONEXAO', 'DEFAULT']
     
     for key in keys_order:
