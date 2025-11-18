@@ -4,7 +4,7 @@ import plotly.express as px
 import openpyxl
 from datetime import datetime
 import config # Importa o arquivo de configuração
-from streamlit_folium import st_folium # <-- Importa o componente Folium
+from streamlit_folium import st_folium # Importa o componente Folium
 
 # Configuração da página
 st.set_page_config(layout="wide")
@@ -71,13 +71,28 @@ if df is None:
     st.error("Erro ao carregar o dataframe.")
     st.stop()
 
-# ---- CÁLCULO "AO VIVO": Tempo Decorrido (em Segundos) ----
+# ---- CÁLCULO SLA DINÂMICO E TEMPO DECORRIDO ----
 df_processado = df.copy()
+
+# 1. Calcula Tempo Decorrido (Ao Vivo)
 if config.COLUNA_ABERTURA in df_processado.columns:
     agora = pd.Timestamp.now()
     df_processado['Tempo_Decorrido_Segundos'] = (agora - df_processado[config.COLUNA_ABERTURA]).dt.total_seconds()
 else:
     df_processado['Tempo_Decorrido_Segundos'] = pd.NaT
+
+# 2. Calcula SLA Dinâmico por Linha e Tempo Restante
+if config.COLUNA_ASSUNTO in df_processado.columns:
+    df_sla_info = df_processado[config.COLUNA_ASSUNTO].apply(config.obter_sla_segundos).apply(pd.Series)
+    df_sla_info.columns = ['SLA_Total_Segundos', 'SLA_Alerta_Segundos']
+    df_processado = pd.concat([df_processado, df_sla_info], axis=1)
+
+    df_processado['Tempo_Restante_Segundos'] = df_processado['SLA_Total_Segundos'] - df_processado['Tempo_Decorrido_Segundos']
+else:
+    st.warning("Coluna 'Assunto' não encontrada. Usando SLA padrão de 24h.")
+    # Fallback to 24h global SLA (though not strictly necessary as this page doesn't need SLA columns)
+    pass
+
 
 st.session_state['df_processado'] = df_processado
 
@@ -204,9 +219,8 @@ if config.COLUNA_LATITUDE in df_filtrado.columns and config.COLUNA_LONGITUDE in 
     if df_mapa.empty:
         st.info("Nenhum chamado com coordenadas válidas encontrado para os filtros atuais.")
     else:
-        # Chama a nova função do config.py para criar o mapa Folium
+        # A página Visão Geral não tem SLA, então colorimos pelo padrão (Safe)
         mapa_folium = config.criar_mapa_folium(df_mapa)
-        # Exibe o mapa no Streamlit
         st_folium(mapa_folium, use_container_width=True, height=400, returned_objects=[])
 else:
     st.warning("Colunas 'latitude' ou 'longitude' não encontradas. O mapa não pode ser exibido.")
