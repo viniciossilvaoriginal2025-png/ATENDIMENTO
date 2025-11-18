@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import config # <-- Importa o arquivo de configuração
+from streamlit_folium import st_folium # <-- Importa o componente Folium
 
 st.set_page_config(layout="wide")
 st.title("🚨 Painel de Alertas e Pendências (SLA 24h)")
@@ -21,7 +22,7 @@ cidades_selecionadas = st.sidebar.multiselect(
     f'Filtrar por {config.COLUNA_CIDADE}',
     options=sorted(df_processado[config.COLUNA_CIDADE].dropna().unique()),
     default=[],
-    key='alertas_cidade' # Chave única para este filtro
+    key='alertas_cidade' 
 )
 tecnicos_selecionados = []
 if config.COLUNA_TECNICO in df_processado.columns:
@@ -29,7 +30,7 @@ if config.COLUNA_TECNICO in df_processado.columns:
         f'Filtrar por {config.COLUNA_TECNICO}',
         options=sorted(df_processado[config.COLUNA_TECNICO].dropna().unique()),
         default=[],
-        key='alertas_tecnico' # Chave única
+        key='alertas_tecnico' 
     )
 assuntos_selecionados = []
 if config.COLUNA_ASSUNTO in df_processado.columns:
@@ -37,23 +38,20 @@ if config.COLUNA_ASSUNTO in df_processado.columns:
         f'Filtrar por {config.COLUNA_ASSUNTO}',
         options=sorted(df_processado[config.COLUNA_ASSUNTO].dropna().unique()),
         default=[],
-        key='alertas_assunto' # Chave única
+        key='alertas_assunto' 
     )
 
-# --- MUDANÇA AQUI: Filtro de Status com Checkbox (Flags) ---
+# --- Filtro de Status com Checkbox (Flags) ---
 status_selecionados = []
 if config.COLUNA_STATUS in df_processado.columns:
     st.sidebar.subheader(f"Filtrar por {config.COLUNA_STATUS}")
     opcoes_status = sorted(df_processado[config.COLUNA_STATUS].dropna().unique())
     
-    # Cria uma "flag" (checkbox) para cada status
     for status in opcoes_status:
-        # Default=True significa que todos vêm marcados
-        # Usamos uma chave única para não dar conflito com a outra página
-        if st.sidebar.checkbox(status, value=True, key=f"alertas_status_{status}"):
+        # O default é True apenas para o status "VISITA_AGENDADA"
+        is_default = (status == "VISITA_AGENDADA")
+        if st.sidebar.checkbox(status, value=is_default, key=f"alertas_status_{status}"):
             status_selecionados.append(status)
-# --- FIM DA MUDANÇA ---
-
 
 # --- Aplica os filtros desta página ---
 if cidades_selecionadas:
@@ -62,19 +60,11 @@ if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado_alertas.column
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
 if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado_alertas.columns:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
-    
-# --- MUDANÇA AQUI: Aplica o filtro das flags de status
 if config.COLUNA_STATUS in df_filtrado_alertas.columns:
     df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(status_selecionados)]
-# --- FIM DA MUDANÇA ---
-
 
 # ---- Início da Lógica da Página de Alertas ----
 
-# A nota de info foi removida, pois agora os filtros controlam tudo.
-# st.info(f"Focando em status: {', '.join(config.STATUS_ABERTOS)}.")
-
-# --- MUDANÇA AQUI ---
 # O "df_abertos" agora é simplesmente o dataframe filtrado pelas flags
 df_abertos = df_filtrado_alertas.copy()
 
@@ -82,7 +72,7 @@ if not df_abertos.empty:
     # Cálculos de Alerta e Tempo Restante
     df_abertos['Tempo_Restante_Segundos'] = config.SLA_SEGUNDOS - df_abertos['Tempo_Decorrido_Segundos']
     df_abertos['SLA_Estourado'] = df_abertos['Tempo_Restante_Segundos'] < 0
-    df_abertos['SLA_Alerta'] = df_abertos['Tempo_Restante_Segundos'].between(0, config.ALERTA_SEGUNDOS) # Alerta nas próximas 4h
+    df_abertos['SLA_Alerta'] = df_abertos['Tempo_Restante_Segundos'].between(0, config.ALERTA_SEGUNDOS) 
 else:
     df_abertos['Tempo_Restante_Segundos'] = pd.NaT
     df_abertos['SLA_Estourado'] = False
@@ -119,6 +109,21 @@ else:
     col_alerta3.metric("Abertos há 21h", f"{abertos_21h} 🔴")
     col_alerta4.metric("Abertos há 22h", f"{abertos_22h} 🚨")
     
+    # ---- Mapa de Alertas (Alterado) ----
+    st.subheader("Mapa de Chamados Pendentes")
+    if config.COLUNA_LATITUDE in df_abertos.columns and config.COLUNA_LONGITUDE in df_abertos.columns:
+        df_mapa_alertas = df_abertos.dropna(subset=[config.COLUNA_LATITUDE, config.COLUNA_LONGITUDE])
+        if df_mapa_alertas.empty:
+            st.info("Nenhum chamado pendente com coordenadas válidas encontrado.")
+        else:
+            # Chama a nova função do config.py para criar o mapa Folium
+            # A função já sabe colorir de Verde/Vermelho/Branco
+            mapa_folium = config.criar_mapa_folium(df_mapa_alertas)
+            # Exibe o mapa no Streamlit
+            st_folium(mapa_folium, use_container_width=True, height=400, returned_objects=[])
+    else:
+        st.warning("Colunas 'latitude' ou 'longitude' não encontradas. O mapa não pode ser exibido.")
+
     # ---- Tabela de Chamados Pendentes ----
     st.subheader("Lista de Chamados (Ordenado por mais antigo)")
     
@@ -154,8 +159,8 @@ else:
     colunas_para_esconder = [col for col in colunas_para_esconder if col in df_display.columns]
 
     st.dataframe(
-        df_display.style.apply(config.highlight_sla, axis=1) # Aplica a cor
-                         .hide(axis="columns", subset=colunas_para_esconder), # Esconde colunas
+        df_display.style.apply(config.highlight_sla, axis=1) 
+                         .hide(axis="columns", subset=colunas_para_esconder), 
         use_container_width=True,
-        column_order=colunas_finais # Define a ordem
+        column_order=colunas_finais 
     )
