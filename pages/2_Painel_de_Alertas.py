@@ -48,7 +48,6 @@ if config.COLUNA_STATUS in df_processado.columns:
     opcoes_status = sorted(df_processado[config.COLUNA_STATUS].dropna().unique())
     
     for status in opcoes_status:
-        # O default é True apenas para o status "VISITA_AGENDADA"
         is_default = (status == "VISITA_AGENDADA")
         if st.sidebar.checkbox(status, value=is_default, key=f"alertas_status_{status}"):
             status_selecionados.append(status)
@@ -65,10 +64,13 @@ if config.COLUNA_STATUS in df_filtrado_alertas.columns:
 
 # ---- Início da Lógica da Página de Alertas ----
 
-# O "df_abertos" agora é simplesmente o dataframe filtrado pelas flags
 df_abertos = df_filtrado_alertas.copy()
 
 if not df_abertos.empty:
+    # 1. ORDENAÇÃO E NUMERAÇÃO (RECONTAGEM)
+    df_abertos = df_abertos.sort_values(by='Tempo_Decorrido_Segundos', ascending=False).reset_index(drop=True)
+    df_abertos.insert(0, 'Prioridade', df_abertos.index + 1) # <--- CRIA A COLUNA PRIORIDADE
+    
     # Cálculos de Alerta e Tempo Restante
     df_abertos['Tempo_Restante_Segundos'] = config.SLA_SEGUNDOS - df_abertos['Tempo_Decorrido_Segundos']
     df_abertos['SLA_Estourado'] = df_abertos['Tempo_Restante_Segundos'] < 0
@@ -109,48 +111,47 @@ else:
     col_alerta3.metric("Abertos há 21h", f"{abertos_21h} 🔴")
     col_alerta4.metric("Abertos há 22h", f"{abertos_22h} 🚨")
     
-    # ---- Mapa de Alertas (Alterado) ----
+    # ---- Mapa de Alertas ----
     st.subheader("Mapa de Chamados Pendentes")
     if config.COLUNA_LATITUDE in df_abertos.columns and config.COLUNA_LONGITUDE in df_abertos.columns:
         df_mapa_alertas = df_abertos.dropna(subset=[config.COLUNA_LATITUDE, config.COLUNA_LONGITUDE])
         if df_mapa_alertas.empty:
             st.info("Nenhum chamado pendente com coordenadas válidas encontrado.")
         else:
-            # Chama a nova função do config.py para criar o mapa Folium
-            # A função já sabe colorir de Verde/Vermelho/Branco
             mapa_folium = config.criar_mapa_folium(df_mapa_alertas)
-            # Exibe o mapa no Streamlit
             st_folium(mapa_folium, use_container_width=True, height=400, returned_objects=[])
     else:
         st.warning("Colunas 'latitude' ou 'longitude' não encontradas. O mapa não pode ser exibido.")
 
     # ---- Tabela de Chamados Pendentes ----
-    st.subheader("Lista de Chamados (Ordenado por mais antigo)")
+    st.subheader("Lista de Chamados (Ordenado por Prioridade)")
     
     colunas_para_mostrar = [
+        'Prioridade', # <--- ADICIONADO AQUI
         config.COLUNA_ID_CLIENTE, config.COLUNA_NOME_CLIENTE, config.COLUNA_ASSUNTO,
         config.COLUNA_STATUS, config.COLUNA_ABERTURA,
         'Tempo_Decorrido_Segundos', 'Tempo_Restante_Segundos', 
         'SLA_Estourado', 'SLA_Alerta'
     ]
     if config.COLUNA_TECNICO in df_abertos.columns:
-        colunas_para_mostrar.insert(4, config.COLUNA_TECNICO) 
+        colunas_para_mostrar.insert(5, config.COLUNA_TECNICO) 
     
     colunas_para_mostrar = [col for col in colunas_para_mostrar if col in df_abertos.columns]
-    df_display = df_abertos[colunas_para_mostrar].sort_values(by='Tempo_Decorrido_Segundos', ascending=False)
+    df_display = df_abertos[colunas_para_mostrar].copy() # Não precisamos mais de sort aqui
     
     df_display['Data Abertura'] = df_display[config.COLUNA_ABERTURA].dt.strftime('%d/%m/%y %H:%M') 
     df_display['Tempo Aberto (H:M:S)'] = df_display['Tempo_Decorrido_Segundos'].apply(config.formatar_hms)
     df_display['Tempo Restante SLA (H:M:S)'] = df_display['Tempo_Restante_Segundos'].apply(config.formatar_hms)
     
     colunas_finais = [
+        'Prioridade', # <--- ADICIONADO AQUI
         config.COLUNA_ID_CLIENTE, config.COLUNA_NOME_CLIENTE, config.COLUNA_ASSUNTO, 
         config.COLUNA_STATUS, 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)'
     ]
     if config.COLUNA_TECNICO in df_display.columns:
-        colunas_finais.insert(4, config.COLUNA_TECNICO) 
+        colunas_finais.insert(5, config.COLUNA_TECNICO) 
     
-    colunas_finais = [col for col in colunas_finais if col in df_display.columns or col in ['Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)']]
+    colunas_finais = [col for col in colunas_finais if col in df_display.columns or col in ['Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)', 'Prioridade']]
 
     colunas_para_esconder = [
         'Tempo_Decorrido_Segundos', 'Tempo_Restante_Segundos', 
