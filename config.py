@@ -16,53 +16,53 @@ COLUNA_TECNICO = "Tecnico Visita"
 COLUNA_LATITUDE = "latitude"
 COLUNA_LONGITUDE = "longitude"
 
-# --- CONFIGURAÇÃO DE SLA DINÂMICO ---
-# Adicionado SLA de 7 dias (168h) para Manutenção Rural
-SLAS_POR_CATEGORIA = {
-    'MANUTENCAO_RURAL': {'sla_hours': 168, 'alerta_hours': 4}, # SLA 7 dias (168h)
-    'ATIVACAO': {'sla_hours': 24, 'alerta_hours': 4},
-    'MUDANCA': {'sla_hours': 24, 'alerta_hours': 4},
-    'MANUTENCAO': {'sla_hours': 24, 'alerta_hours': 4},
-    'SERVICOS': {'sla_hours': 24, 'alerta_hours': 4},
-    'DESCONEXAO': {'sla_hours': 24, 'alerta_hours': 4},
-    'DEFAULT': {'sla_hours': 24, 'alerta_hours': 4} # 24h é o padrão
-}
-
-# --- CONFIGURAÇÃO DE ALERTA ---
+# --- CONFIGURAÇÃO DE ALERTA E SLA ---
 STATUS_ABERTOS = ["VISITA_AGENDADA"] 
+SLA_SEGUNDOS = 24 * 60 * 60  # 24 horas
+ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 
 # --- CONFIGURAÇÃO DE CORES (SEMAFORO POR CATEGORIA) ---
 CORES_CATEGORIA = {
-    'ATIVACAO': {'safe': '#228B22', 'alert': '#FFD700', 'overdue': '#FF4500', 'label': 'Ativação Inicial'},
-    'MUDANCA': {'safe': '#1E90FF', 'alert': '#87CEFA', 'overdue': '#00008B', 'label': 'Mudança Endereço'},
-    'MANUTENCAO': {'safe': '#B22222', 'alert': '#F08080', 'overdue': '#800000', 'label': 'Manutenção Ext.'},
-    'MANUTENCAO_RURAL': {'safe': '#006400', 'alert': '#9ACD32', 'overdue': '#4B0082', 'label': 'Manutenção Rural (7d)'}, # Novo esquema
-    'SERVICOS': {'safe': '#9370DB', 'alert': '#DDA0DD', 'overdue': '#4B0082', 'label': 'Serviços Extras'},
-    'DESCONEXAO': {'safe': '#008080', 'alert': '#40E0D0', 'overdue': '#004040', 'label': 'Desconexão/Recolh.'},
-    'DEFAULT': {'safe': 'gray', 'alert': 'lightgray', 'overdue': 'black', 'label': 'Outros'}
+    'ATIVACAO': {
+        'safe': '#228B22', 'alert': '#FFD700', 'overdue': '#FF4500', 
+        'label': 'Ativação Inicial'
+    },
+    'MUDANCA': {
+        'safe': '#1E90FF', 'alert': '#87CEFA', 'overdue': '#00008B', 
+        'label': 'Mudança Endereço'
+    },
+    'MANUTENCAO': {
+        'safe': '#B22222', 'alert': '#F08080', 'overdue': '#800000', 
+        'label': 'Manutenção Ext.'
+    },
+    'SERVICOS': {
+        'safe': '#9370DB', 'alert': '#DDA0DD', 'overdue': '#4B0082', 
+        'label': 'Serviços Extras'
+    },
+    'DESCONEXAO': {
+        'safe': '#008080', 'alert': '#40E0D0', 'overdue': '#004d4d',
+        'label': 'Desconexão/Recolh.'
+    },
+    'DEFAULT': {
+        'safe': 'gray', 'alert': 'lightgray', 'overdue': 'black',
+        'label': 'Outros'
+    }
 }
 
-# Mapeamento de nomes do Excel para as chaves
 MAPA_NOMES = {
-    'ATIVAÇÃO INICIAL (ADAPTER)': 'ATIVACAO', 'ATIVACAO INICIAL (ADAPTER)': 'ATIVACAO',
-    'MUDANÇA DE ENDEREÇO (ADAPTER)': 'MUDANCA', 'MUDANCA DE ENDERECO (ADAPTER)': 'MUDANCA',
-    'MANUTENÇÃO EXTERNA (ADAPTER)': 'MANUTENCAO', 'MANUTENCAO EXTERNA (ADAPTER)': 'MANUTENCAO',
-    'MANUTENÇÃO ZONA RURAL (ADAPTER)': 'MANUTENCAO_RURAL', # <--- NOVO
-    'MANUTENCAO ZONA RURAL (ADAPTER)': 'MANUTENCAO_RURAL', # <--- NOVO
-    'SERVIÇOS EXTRAS (ADAPTER)': 'SERVICOS', 'SERVICOS EXTRAS (ADAPTER)': 'SERVICOS',
-    'DESCONEXÃO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO', 'DESCONEXAO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO'
+    'ATIVAÇÃO INICIAL (ADAPTER)': 'ATIVACAO',
+    'ATIVACAO INICIAL (ADAPTER)': 'ATIVACAO',
+    'MUDANÇA DE ENDEREÇO (ADAPTER)': 'MUDANCA',
+    'MUDANCA DE ENDERECO (ADAPTER)': 'MUDANCA',
+    'MANUTENÇÃO EXTERNA (ADAPTER)': 'MANUTENCAO',
+    'MANUTENCAO EXTERNA (ADAPTER)': 'MANUTENCAO',
+    'SERVIÇOS EXTRAS (ADAPTER)': 'SERVICOS',
+    'SERVICOS EXTRAS (ADAPTER)': 'SERVICOS',
+    'DESCONEXÃO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO',
+    'DESCONEXAO/RECOLHIMENTO (ADAPTER)': 'DESCONEXAO'
 }
 
-# ---- NOVO: FUNÇÃO PARA OBTER SLA (retorna segundos totais e segundos de alerta) ----
-def obter_sla_segundos(assunto):
-    assunto_upper = str(assunto).strip().upper()
-    chave = MAPA_NOMES.get(assunto_upper, 'DEFAULT')
-    sla_config = SLAS_POR_CATEGORIA.get(chave, SLAS_POR_CATEGORIA['DEFAULT'])
-    
-    # Retorna (SLA TOTAL EM SEGUNDOS, JANELA DE ALERTA EM SEGUNDOS)
-    return sla_config['sla_hours'] * 3600, sla_config['alerta_hours'] * 3600
-
-# ---- FUNÇÕES DE ESTILO (RESTANTE DO CÓDIGO) ----
+# ---- FUNÇÃO HELPER DE FORMATAÇÃO DE TEMPO ----
 def formatar_hms(segundos_totais):
     if pd.isna(segundos_totais): return "N/A"
     segundos_totais = int(segundos_totais)
@@ -73,25 +73,27 @@ def formatar_hms(segundos_totais):
     segundos = segundos_totais % 60
     return f"{sinal}{horas:02}:{minutos:02}:{segundos:02}"
 
-# ... [O restante das funções highlight_sla, get_esquema_cor, obter_dados_cor, get_text_color, criar_mapa_folium permanecem no config.py] ...
-
 # ---- FUNÇÃO HELPER DE ESTILO (TABELA) ----
 def highlight_sla(row):
     esquema = get_esquema_cor(row)
     if 'SLA_Estourado' not in row:
-        bg_color, text_color = esquema['safe'], 'white'
+        bg_color = esquema['safe']
+        text_color = 'white'
     elif row['SLA_Estourado']:
-        bg_color, text_color = esquema['overdue'], 'white' 
+        bg_color = esquema['overdue']
+        text_color = 'white' 
     elif row['SLA_Alerta']:
-        bg_color, text_color = esquema['alert'], 'black' 
+        bg_color = esquema['alert']
+        text_color = 'black' 
     else:
-        bg_color, text_color = esquema['safe'], 'white' 
+        bg_color = esquema['safe']
+        text_color = 'white' 
     return [f'background-color: {bg_color}; color: {text_color}; font-weight: bold'] * len(row)
 
 # ---- HELPER: IDENTIFICAR ESQUEMA DE COR ----
 def get_esquema_cor(row):
-    assunto_upper = str(row.get(COLUNA_ASSUNTO, '')).strip().upper()
-    chave_categoria = MAPA_NOMES.get(assunto_upper, 'DEFAULT')
+    assunto_raw = str(row.get(COLUNA_ASSUNTO, '')).strip().upper()
+    chave_categoria = MAPA_NOMES.get(assunto_raw, 'DEFAULT')
     return CORES_CATEGORIA.get(chave_categoria, CORES_CATEGORIA['DEFAULT'])
 
 # ---- HELPER: OBTER COR DO MARCADOR ----
@@ -107,16 +109,20 @@ def get_text_color(bg_color):
     light_colors = ['#FFD700', '#87CEFA', '#F08080', '#DDA0DD', '#40E0D0', 'lightgray', 'white']
     return 'black' if bg_color in light_colors else 'white'
 
-# ---- CRIAR MAPA FOLIUM ----
+# ---- CRIAR MAPA FOLIUM COM PRIORIDADE ----
 def criar_mapa_folium(df_mapa):
     if df_mapa.empty:
         return folium.Map(location=[-15.788497, -47.879873], zoom_start=4)
 
+    # REMOVIDO: O df_mapa já está ordenado na página 2 agora.
+    
     map_center = [df_mapa[COLUNA_LATITUDE].mean(), df_mapa[COLUNA_LONGITUDE].mean()]
     m = folium.Map(location=map_center, zoom_start=12)
 
     for idx, row in df_mapa.iterrows():
+        # LÊ O NÚMERO DA PRIORIDADE DA COLUNA
         prioridade = row.get('Prioridade', idx + 1)
+        
         cor_fundo = obter_dados_cor(row)
         cor_texto = get_text_color(cor_fundo)
         cor_borda = "black" if cor_fundo == "white" else cor_fundo
@@ -129,6 +135,7 @@ def criar_mapa_folium(df_mapa):
         if 'Tempo_Restante_Segundos' in row and pd.notna(row['Tempo_Restante_Segundos']):
             t_restante = f"<b>Restante:</b> {formatar_hms(row['Tempo_Restante_Segundos'])}<br>"
 
+        # HTML para o ícone numerado
         icon_html = f"""
         <div style="
             background-color: {cor_fundo};
@@ -163,12 +170,13 @@ def criar_mapa_folium(df_mapa):
         
         folium.Marker(
             location=[row[COLUNA_LATITUDE], row[COLUNA_LONGITUDE]],
-            icon=DivIcon(html=icon_html), 
+            icon=DivIcon(html=icon_html), # Usa o ícone HTML personalizado
             popup=folium.Popup(popup_html, max_width=300)
         ).add_to(m)
 
+    # ---- LEGENDA TABELA HTML ----
     rows_html = ""
-    keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'MANUTENCAO_RURAL', 'SERVICOS', 'DESCONEXAO', 'DEFAULT']
+    keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DESCONEXAO', 'DEFAULT']
     
     for key in keys_order:
         cor = CORES_CATEGORIA[key]
@@ -208,6 +216,7 @@ def criar_mapa_folium(df_mapa):
     {{% endmacro %}}
     """
     macro = MacroElement()
+    macro._template = Template(template_legenda)
     m.get_root().add_child(macro)
 
     return m
