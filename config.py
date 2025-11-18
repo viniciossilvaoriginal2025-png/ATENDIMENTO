@@ -16,27 +16,31 @@ COLUNA_LATITUDE = "latitude"
 COLUNA_LONGITUDE = "longitude"
 
 # --- CONFIGURAÇÃO DE ALERTA E SLA ---
+# Status que define o que é "Pendente" para gerar alertas
 STATUS_ABERTOS = ["VISITA_AGENDADA"] 
 SLA_SEGUNDOS = 24 * 60 * 60  # 24 horas
 ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 
 # --- CONFIGURAÇÃO DE CORES POR CATEGORIA (ASSUNTO) ---
-# As chaves devem estar em MAIÚSCULAS para garantir que o código encontre
+# As chaves estão em MAIÚSCULAS para garantir a leitura correta
 CORES_CATEGORIA = {
-    'ATIVACAO INICIAL': 'green',        # Verde
-    'ATIVACÃO INICIAL': 'green',        # (Variação com til)
-    'ATIVAÇÃO INICIAL': 'green',        # (Variação com til e cedilha)
+    # Ativação = Verde
+    'ATIVAÇÃO INICIAL (ADAPTER)': 'green',
+    'ATIVACAO INICIAL (ADAPTER)': 'green', 
     
-    'MUDANCA DE ENDERECO': 'orange',    # Laranja
-    'MUDANÇA DE ENDEREÇO': 'orange',    # (Variação correta)
+    # Mudança de Endereço = Laranja
+    'MUDANÇA DE ENDEREÇO (ADAPTER)': 'orange',
+    'MUDANCA DE ENDERECO (ADAPTER)': 'orange',
     
-    'MANUTENCAO EXTERNA': 'darkred',    # Vermelho Escuro
-    'MANUTENÇÃO EXTERNA': 'darkred',    # (Variação correta)
+    # Manutenção = Vermelho Escuro
+    'MANUTENÇÃO EXTERNA (ADAPTER)': 'darkred',
+    'MANUTENCAO EXTERNA (ADAPTER)': 'darkred',
     
-    'SERVICOS EXTRAS': 'purple',        # Roxo
-    'SERVIÇOS EXTRAS': 'purple',        # (Variação correta)
+    # Serviços Extras = Roxo
+    'SERVIÇOS EXTRAS (ADAPTER)': 'purple',
+    'SERVICOS EXTRAS (ADAPTER)': 'purple',
     
-    'DEFAULT': 'gray' # Cor para qualquer outro assunto não listado
+    'DEFAULT': 'gray' # Qualquer outro assunto fica cinza
 }
 
 # ---- FUNÇÃO HELPER DE FORMATAÇÃO DE TEMPO ----
@@ -63,7 +67,7 @@ def highlight_sla(linha):
     else:
         return [''] * len(linha)
 
-# ---- FUNÇÃO HELPER: OBTER COR DO MARCADOR ----
+# ---- FUNÇÃO HELPER: OBTER COR DO MARCADOR (MAPA) ----
 def obter_cor_marcador(row):
     # 1. Prioridade Máxima: VENCIDO (> 24h) -> Branco
     if 'SLA_Estourado' in row and row['SLA_Estourado']:
@@ -90,10 +94,10 @@ def criar_mapa_folium(df_mapa):
 
     for idx, row in df_mapa.iterrows():
         
-        # Define a cor usando a nova lógica
+        # Define a cor usando a lógica de prioridade (Vencido > Alerta > Categoria)
         cor_fundo = obter_cor_marcador(row)
         
-        # Define a borda (preta para branco, senão igual ao fundo)
+        # Define a borda (preta para branco para dar destaque, senão igual ao fundo)
         cor_borda = "black" if cor_fundo == "white" else cor_fundo
         
         tecnico_nome = row.get(COLUNA_TECNICO, "N/A") 
@@ -127,30 +131,31 @@ def criar_mapa_folium(df_mapa):
             popup=folium.Popup(popup_html, max_width=300)
         ).add_to(m)
 
-    # ---- LEGENDA ATUALIZADA ----
+    # ---- LEGENDA (ATUALIZADA COM SEUS NOMES) ----
     template_legenda = """
     {% macro html(this, kwargs) %}
     <div style="
         position: fixed; 
-        bottom: 30px; left: 30px; width: 220px; height: auto; 
+        bottom: 30px; left: 30px; width: 240px; height: auto; 
         z-index:9999; font-size:13px;
         background-color: white;
         border: 2px solid grey;
         border-radius: 6px;
         padding: 10px;
-        opacity: 0.9;
+        opacity: 0.95;
         box-shadow: 3px 3px 5px rgba(0,0,0,0.3);
+        font-family: sans-serif;
         ">
         <b>Status do Prazo (Prioridade)</b><br>
-        <i style="background:white; border:2px solid black; width:10px; height:10px; display:inline-block; border-radius:50%;"></i>&nbsp; Vencido (>24h)<br>
-        <i style="background:blue; width:12px; height:12px; display:inline-block; border-radius:50%;"></i>&nbsp; Alerta (< 4h restantes)<br>
+        <i style="background:white; border:2px solid black; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Vencido (>24h)<br>
+        <i style="background:blue; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Alerta (< 4h restantes)<br>
         <hr style="margin: 8px 0;">
         <b>No Prazo (Por Categoria)</b><br>
-        <i style="background:green; width:12px; height:12px; display:inline-block; border-radius:50%;"></i>&nbsp; Ativação Inicial<br>
-        <i style="background:orange; width:12px; height:12px; display:inline-block; border-radius:50%;"></i>&nbsp; Mudança Endereço<br>
-        <i style="background:darkred; width:12px; height:12px; display:inline-block; border-radius:50%;"></i>&nbsp; Manutenção Ext.<br>
-        <i style="background:purple; width:12px; height:12px; display:inline-block; border-radius:50%;"></i>&nbsp; Serviços Extras<br>
-        <i style="background:gray; width:12px; height:12px; display:inline-block; border-radius:50%;"></i>&nbsp; Outros<br>
+        <i style="background:green; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Ativação Inicial<br>
+        <i style="background:orange; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Mudança de Endereço<br>
+        <i style="background:darkred; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Manutenção Externa<br>
+        <i style="background:purple; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Serviços Extras<br>
+        <i style="background:gray; width:12px; height:12px; display:inline-block; border-radius:50%; margin-right:5px;"></i> Outros<br>
     </div>
     {% endmacro %}
     """
