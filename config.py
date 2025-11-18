@@ -24,33 +24,33 @@ ALERTA_SEGUNDOS = 4 * 60 * 60 # 4 horas
 # --- CONFIGURAÇÃO DE CORES (SEMAFORO POR CATEGORIA) ---
 CORES_CATEGORIA = {
     'ATIVACAO': {
-        'safe': '#228B22',    # Verde Floresta
-        'alert': '#FFD700',   # Dourado 
-        'overdue': '#FF4500', # Laranja Escuro
+        'safe': '#228B22',    
+        'alert': '#FFD700',   
+        'overdue': '#FF4500', 
         'label': 'Ativação Inicial'
     },
     'MUDANCA': {
-        'safe': '#1E90FF',    # Azul Dodger
-        'alert': '#87CEFA',   # Azul Claro 
-        'overdue': '#00008B', # Azul Marinho
+        'safe': '#1E90FF',    
+        'alert': '#87CEFA',   
+        'overdue': '#00008B', 
         'label': 'Mudança Endereço'
     },
     'MANUTENCAO': {
-        'safe': '#B22222',    # Tijolo
-        'alert': '#F08080',   # Coral Claro 
-        'overdue': '#800000', # Marrom
+        'safe': '#B22222',    
+        'alert': '#F08080',   
+        'overdue': '#800000', 
         'label': 'Manutenção Ext.'
     },
     'SERVICOS': {
-        'safe': '#9370DB',    # Roxo Médio
-        'alert': '#DDA0DD',   # Ameixa/Lilás 
-        'overdue': '#4B0082', # Índigo
+        'safe': '#9370DB',    
+        'alert': '#DDA0DD',   
+        'overdue': '#4B0082', 
         'label': 'Serviços Extras'
     },
     'DESCONEXAO': {
-        'safe': '#008080',    # Teal
-        'alert': '#40E0D0',   # Turquesa 
-        'overdue': '#004d4d', # Teal Escuro
+        'safe': '#008080',    
+        'alert': '#40E0D0',   
+        'overdue': '#004d4d', 
         'label': 'Desconexão/Recolh.'
     },
     'DEFAULT': {
@@ -118,17 +118,16 @@ def obter_dados_cor(row):
 
 # ---- HELPER: OBTER COR DO TEXTO (PRETO/BRANCO) ----
 def get_text_color(bg_color):
-    # Lista de cores claras que precisam de texto preto
-    light_colors = ['#FFD700', '#87CEFA', '#F08080', '#DDA0DD', '#40E0D0', 'lightgray', 'white', '#FFF3CD']
+    # Lógica simples para cores claras vs escuras
+    light_colors = ['#FFD700', '#87CEFA', '#F08080', '#DDA0DD', '#40E0D0', 'lightgray', 'white']
     return 'black' if bg_color in light_colors else 'white'
 
-# ---- CRIAR MAPA FOLIUM COM PRIORIDADE ----
+# ---- CRIAR MAPA FOLIUM COM PRIORIDADE (NUMERAÇÃO) ----
 def criar_mapa_folium(df_mapa):
     if df_mapa.empty:
         return folium.Map(location=[-15.788497, -47.879873], zoom_start=4)
 
     # 1. ORDENAÇÃO POR PRIORIDADE (Mais antigo primeiro)
-    # O 'Tempo_Decorrido_Segundos' maior significa que está aberto há mais tempo.
     if 'Tempo_Decorrido_Segundos' in df_mapa.columns:
         df_mapa = df_mapa.sort_values(by='Tempo_Decorrido_Segundos', ascending=False).reset_index(drop=True)
     
@@ -136,12 +135,11 @@ def criar_mapa_folium(df_mapa):
     m = folium.Map(location=map_center, zoom_start=12)
 
     for idx, row in df_mapa.iterrows():
-        # Prioridade é o índice + 1 (1, 2, 3...)
         prioridade = idx + 1
         
         cor_fundo = obter_dados_cor(row)
         cor_texto = get_text_color(cor_fundo)
-        cor_borda = "black" if cor_fundo == "white" else cor_fundo # Borda para branco
+        cor_borda = "black" if cor_fundo == "white" else cor_fundo
         
         tecnico = row.get(COLUNA_TECNICO, "N/A")
         if pd.isna(tecnico): tecnico = "N/A"
@@ -190,7 +188,7 @@ def criar_mapa_folium(df_mapa):
             popup=folium.Popup(popup_html, max_width=300)
         ).add_to(m)
 
-    # ---- LEGENDA ----
+    # ---- LEGENDA TABELA HTML ----
     rows_html = ""
     keys_order = ['ATIVACAO', 'MUDANCA', 'MANUTENCAO', 'SERVICOS', 'DESCONEXAO', 'DEFAULT']
     
