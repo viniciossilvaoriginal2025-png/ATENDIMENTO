@@ -4,6 +4,7 @@ import plotly.express as px
 import openpyxl
 from datetime import datetime
 import config # Importa o arquivo de configuração
+from streamlit_folium import st_folium # <-- Importa o componente Folium
 
 # Configuração da página
 st.set_page_config(layout="wide")
@@ -12,8 +13,7 @@ st.set_page_config(layout="wide")
 @st.cache_data
 def carregar_e_processar(arquivo_upado):
     try:
-        # Lê os bytes do arquivo upado
-        df = pd.read_excel(arquivo_upado.getvalue(), header=1) 
+        df = pd.read_excel(arquivo_upado.getvalue()) 
     except Exception as e:
         st.error(f"Erro ao ler o arquivo Excel (XLSX): {e}")
         return None
@@ -34,6 +34,11 @@ def carregar_e_processar(arquivo_upado):
         validos = df[[config.COLUNA_ABERTURA, config.COLUNA_AGENDAMENTO]].dropna()
         if not validos.empty:
             df['Tempo_Agendamento_Segundos'] = (validos[config.COLUNA_AGENDAMENTO] - validos[config.COLUNA_ABERTURA]).dt.total_seconds()
+            
+    if config.COLUNA_LATITUDE in df.columns:
+        df[config.COLUNA_LATITUDE] = pd.to_numeric(df[config.COLUNA_LATITUDE], errors='coerce')
+    if config.COLUNA_LONGITUDE in df.columns:
+        df[config.COLUNA_LONGITUDE] = pd.to_numeric(df[config.COLUNA_LONGITUDE], errors='coerce')
 
     return df
 
@@ -41,25 +46,25 @@ def carregar_e_processar(arquivo_upado):
 st.title("📊 Visão Geral dos Atendimentos")
 
 st.sidebar.header("Controles do Dashboard")
-uploaded_file = st.sidebar.file_uploader("Faça o upload do seu arquivo (XLSX)", type=["xlsx"])
+uploaded_file = st.sidebar.file_uploader("Faça o upload do seu arquivo (XLSX com mapa)", type=["xlsx"])
 
-# Botão para limpar o cache e carregar um novo arquivo
 if st.sidebar.button("Limpar Dados e Recarregar"):
     st.session_state.clear()
     st.experimental_rerun()
 
-# --- LÓGICA DE CARREGAMENTO CORRIGIDA ---
-df = None # Inicializa df
+df = None 
 if uploaded_file is not None:
     df = carregar_e_processar(uploaded_file)
     if df is not None:
+        if config.COLUNA_LATITUDE not in df.columns or config.COLUNA_LONGITUDE not in df.columns:
+            st.warning("Atenção: Este arquivo não contém dados de mapa (latitude/longitude). Rode o script 'geocode.py' no seu arquivo original primeiro.")
         st.session_state['df_original'] = df
         st.sidebar.success("Arquivo carregado!")
         
 elif 'df_original' in st.session_state:
     df = st.session_state['df_original']
 else:
-    st.info("Por favor, faça o upload de um arquivo XLSX na barra lateral para iniciar a análise.")
+    st.info("Por favor, faça o upload do seu arquivo 'relatorio_com_mapa.xlsx' na barra lateral.")
     st.stop() 
 
 if df is None:
@@ -81,9 +86,9 @@ colunas_essenciais = [config.COLUNA_CIDADE, config.COLUNA_STATUS, config.COLUNA_
 colunas_faltando = [col for col in colunas_essenciais if col not in df_processado.columns]
 
 if colunas_faltando:
-    st.error(f"Erro: O arquivo foi lido, mas algumas colunas essenciais não foram encontradas. Verifique os nomes na Linha 2.")
-    st.error(f"Colunas Faltando: {', '.join(colunas_faltando)}")
-    st.write("Colunas encontradas no arquivo:", df_processado.columns.tolist())
+    st.error(f"Erro: Colunas essenciais não encontradas: {', '.join(colunas_faltando)}")
+    st.error("Você fez o upload do 'relatorio_com_mapa.xlsx' (o arquivo novo) ou do arquivo original?")
+    st.info("O dashboard agora espera o arquivo gerado pelo script 'geocode.py', pois ele tem os cabeçalhos na Linha 1.")
     st.stop()
 
 # ---- Filtros na Barra Lateral (Para esta página) ----
@@ -120,10 +125,8 @@ if config.COLUNA_STATUS in df.columns:
     opcoes_status = sorted(df[config.COLUNA_STATUS].dropna().unique())
     
     for status in opcoes_status:
-        # Default=True significa que todos vêm marcados
         if st.sidebar.checkbox(status, value=True, key=f"main_status_{status}"):
             status_selecionados.append(status)
-# --- FIM DO FILTRO DE FLAGS ---
 
 # --- Lógica de Filtro ---
 if cidades_selecionadas:
@@ -134,6 +137,7 @@ if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
 if config.COLUNA_STATUS in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado[config.COLUNA_STATUS].isin(status_selecionados)]
+
 
 # ---- SEÇÃO 1: Métricas Gerais (Agendamento / Encaminhamento) ----
 st.header("Métricas Gerais de Tempo (Baseado nos Filtros)")
@@ -152,6 +156,7 @@ with col2:
     st.subheader("Abertura até Encaminhamento (X)")
     st.metric(label="Tempo Médio (H:M:S)", value=config.formatar_hms(media_encaminhamento_seg))
     st.metric(label="Tempo Mediano (H:M:S)", value=config.formatar_hms(mediana_encaminhamento_seg))
+
 
 st.markdown("---")
 
@@ -189,6 +194,23 @@ with col_graf2:
                             title="Distribuição de Status")
         st.plotly_chart(fig_status, use_container_width=True)
 
+# ---- (SEÇÃO DE MAPA ALTERADA) ----
+st.markdown("---")
+st.header("Mapa de Chamados (Baseado nos Filtros)")
+
+if config.COLUNA_LATITUDE in df_filtrado.columns and config.COLUNA_LONGITUDE in df_filtrado.columns:
+    df_mapa = df_filtrado.dropna(subset=[config.COLUNA_LATITUDE, config.COLUNA_LONGITUDE])
+    
+    if df_mapa.empty:
+        st.info("Nenhum chamado com coordenadas válidas encontrado para os filtros atuais.")
+    else:
+        # Chama a nova função do config.py para criar o mapa Folium
+        mapa_folium = config.criar_mapa_folium(df_mapa)
+        # Exibe o mapa no Streamlit
+        st_folium(mapa_folium, use_container_width=True, height=400, returned_objects=[])
+else:
+    st.warning("Colunas 'latitude' ou 'longitude' não encontradas. O mapa não pode ser exibido.")
+
 # ---- Lista Resumida ----
 st.markdown("---")
 st.subheader("Lista Resumida (Todos os Chamados nos Filtros)")
@@ -216,6 +238,7 @@ if config.COLUNA_TECNICO in df_display_all.columns:
     colunas_finais_all.insert(4, config.COLUNA_TECNICO) 
 
 st.dataframe(df_display_all[colunas_finais_all], use_container_width=True)
+
 
 with st.expander("Ver dados filtrados completos"):
     st.dataframe(df_filtrado)
