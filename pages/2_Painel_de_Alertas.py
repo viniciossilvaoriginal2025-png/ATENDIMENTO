@@ -2,11 +2,15 @@ import streamlit as st
 import pandas as pd
 import config # <-- Importa o arquivo de configuração
 from streamlit_folium import st_folium # <-- Importa o componente Folium
+from datetime import datetime
 
 st.set_page_config(layout="wide")
 st.title("🚨 Painel de Alertas e Pendências (SLA Dinâmico)")
 
-# Verifica se o DF PROCESSADO (não filtrado) existe
+# --- Inicialização de Variáveis ---
+editor_key = 'action_editor' 
+
+# Verifica se o DF PROCESSADO existe
 if 'df_processado' not in st.session_state or st.session_state['df_processado'].empty:
     st.error("Por favor, carregue um arquivo na página 'Visão Geral' primeiro.")
     st.stop()
@@ -14,67 +18,113 @@ if 'df_processado' not in st.session_state or st.session_state['df_processado'].
 # Busca o DF PROCESSADO COMPLETO
 df_processado = st.session_state['df_processado']
 
-# ---- CRIA FILTROS PRÓPRIOS PARA ESTA PÁGINA ----
-st.sidebar.subheader("Filtros do Painel de Alertas")
-df_filtrado_alertas = df_processado.copy() # Começa com todos os dados
+# --- Inicialização do Estado de Ação ---
+if 'status_map' not in st.session_state:
+    st.session_state['status_map'] = {}
+if 'log_contato' not in st.session_state:
+    st.session_state['log_contato'] = {}
+if 'show_contact_form' not in st.session_state:
+    st.session_state['show_contact_form'] = False
 
+# Filtra removendo 'Concluído'
+status_map = st.session_state['status_map']
+concluidos_ids = [id for id, status in status_map.items() if status == 'Concluído']
+
+if concluidos_ids:
+    df_processado = df_processado[~df_processado[config.COLUNA_ID_CLIENTE].isin(concluidos_ids)]
+    st.success(f"✅ {len(concluidos_ids)} atendimentos concluídos removidos da lista.")
+
+
+# =============================================================================
+# ---- LÓGICA DE FILTROS EM CASCATA (DINÂMICOS) ----
+# =============================================================================
+st.sidebar.subheader("Filtros do Painel de Alertas")
+
+# Vamos usar uma variável temporária que vai sendo filtrada passo a passo
+df_cascade = df_processado.copy()
+
+# 1. FILTRO DE CIDADE (Nível 1)
+# As opções vêm de todo o dataframe
+opcoes_cidades = sorted(df_processado[config.COLUNA_CIDADE].dropna().unique())
 cidades_selecionadas = st.sidebar.multiselect(
     f'Filtrar por {config.COLUNA_CIDADE}',
-    options=sorted(df_processado[config.COLUNA_CIDADE].dropna().unique()),
+    options=opcoes_cidades,
     default=[],
     key='alertas_cidade' 
 )
+
+# Aplica o filtro de cidade imediatamente na variável temporária
+if cidades_selecionadas:
+    df_cascade = df_cascade[df_cascade[config.COLUNA_CIDADE].isin(cidades_selecionadas)]
+
+# 2. FILTRO DE TÉCNICO (Nível 2 - Depende da Cidade)
 tecnicos_selecionados = []
 if config.COLUNA_TECNICO in df_processado.columns:
+    # MUDANÇA: As opções vêm de 'df_cascade' (já filtrado por cidade)
+    opcoes_tecnicos = sorted(df_cascade[config.COLUNA_TECNICO].dropna().unique())
+    
     tecnicos_selecionados = st.sidebar.multiselect(
         f'Filtrar por {config.COLUNA_TECNICO}',
-        options=sorted(df_processado[config.COLUNA_TECNICO].dropna().unique()),
+        options=opcoes_tecnicos,
         default=[],
         key='alertas_tecnico' 
     )
+    
+    # Aplica o filtro de técnico na variável temporária
+    if tecnicos_selecionados:
+        df_cascade = df_cascade[df_cascade[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
+
+# 3. FILTRO DE ASSUNTO (Nível 3 - Depende de Cidade + Técnico)
 assuntos_selecionados = []
 if config.COLUNA_ASSUNTO in df_processado.columns:
+    # MUDANÇA: As opções vêm de 'df_cascade' (já filtrado por cidade e técnico)
+    opcoes_assuntos = sorted(df_cascade[config.COLUNA_ASSUNTO].dropna().unique())
+    
     assuntos_selecionados = st.sidebar.multiselect(
         f'Filtrar por {config.COLUNA_ASSUNTO}',
-        options=sorted(df_processado[config.COLUNA_ASSUNTO].dropna().unique()),
+        options=opcoes_assuntos,
         default=[],
         key='alertas_assunto' 
     )
+    
+    # Aplica o filtro
+    if assuntos_selecionados:
+        df_cascade = df_cascade[df_cascade[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
 
-# --- Filtro de Status com Checkbox (Flags) ---
+# 4. FILTRO DE STATUS (Flags)
 status_selecionados = []
 if config.COLUNA_STATUS in df_processado.columns:
     st.sidebar.subheader(f"Filtrar por {config.COLUNA_STATUS}")
     opcoes_status = sorted(df_processado[config.COLUNA_STATUS].dropna().unique())
-    
     for status in opcoes_status:
-        is_default = (status == "VISITA_AGENDADA")
+        is_default = (status == config.STATUS_ABERTOS[0])
         if st.sidebar.checkbox(status, value=is_default, key=f"alertas_status_{status}"):
             status_selecionados.append(status)
+    
+    # Aplica o filtro
+    df_cascade = df_cascade[df_cascade[config.COLUNA_STATUS].isin(status_selecionados)]
 
-# --- Aplica os filtros desta página ---
-if cidades_selecionadas:
-    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_CIDADE].isin(cidades_selecionadas)]
-if tecnicos_selecionados and config.COLUNA_TECNICO in df_filtrado_alertas.columns:
-    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_TECNICO].isin(tecnicos_selecionados)]
-if assuntos_selecionados and config.COLUNA_ASSUNTO in df_filtrado_alertas.columns:
-    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_ASSUNTO].isin(assuntos_selecionados)]
-if config.COLUNA_STATUS in df_filtrado_alertas.columns:
-    df_filtrado_alertas = df_filtrado_alertas[df_filtrado_alertas[config.COLUNA_STATUS].isin(status_selecionados)]
+# =============================================================================
+# FIM DOS FILTROS
+# =============================================================================
+
+# O df_filtrado_alertas final é o resultado da cascata
+df_filtrado_alertas = df_cascade
+
 
 # ---- Lógica da Página ----
 df_abertos = df_filtrado_alertas.copy()
 
 if not df_abertos.empty:
-    # 1. ORDENAÇÃO E NUMERAÇÃO (CORREÇÃO DE INSTABILIDADE)
+    # 1. ORDENAÇÃO E NUMERAÇÃO
     df_abertos = df_abertos.sort_values(
         by='Tempo_Decorrido_Segundos', 
         ascending=False, 
-        na_position='last' # Garante que NaNs (erros) não quebrem a prioridade
+        na_position='last'
     ).reset_index(drop=True)
     df_abertos.insert(0, 'Prioridade', df_abertos.index + 1)
     
-    # 2. Cálculos de SLA
+    # Cálculos de SLA
     df_abertos['Tempo_Restante_Segundos'] = df_abertos['SLA_Total_Segundos'] - df_abertos['Tempo_Decorrido_Segundos']
     df_abertos['SLA_Estourado'] = df_abertos['Tempo_Restante_Segundos'] < 0
     df_abertos['SLA_Alerta'] = df_abertos.apply(
@@ -82,11 +132,146 @@ if not df_abertos.empty:
                     row['Tempo_Restante_Segundos'] <= row['SLA_Alerta_Segundos'], axis=1
     )
     
-    df_abertos['Ação'] = 'Aberto'
+    # 2. CARREGA O STATUS PERSISTENTE NA COLUNA 'Ação'
+    df_abertos['Ação'] = df_abertos[config.COLUNA_ID_CLIENTE].apply(lambda id: status_map.get(id, 'Aberto'))
+
 
 if df_abertos.empty:
     st.success("🎉 Nenhum chamado encontrado para os filtros atuais!")
 else:
+    # --- BOTÃO GATILHO ---
+    st.markdown("---")
+    if not st.session_state.get('show_contact_form', False):
+        if st.button("📝 Abrir Formulário de Contato Detalhado", key="open_form_btn"):
+            st.session_state['show_contact_form'] = True
+            st.rerun() 
+
+    # --- FORMULÁRIO DE REGISTRO DE TRATATIVA ---
+    if st.session_state.get('show_contact_form', False):
+        st.markdown("---")
+        
+        col_header, col_close = st.columns([4, 1])
+        col_header.header("📋 Registro de Contato")
+        
+        if col_close.button("❌ Fechar Formulário"):
+            st.session_state['show_contact_form'] = False
+            st.rerun()
+
+        # 1. Filtra a lista para APENAS 'Em Tratativa' para o selectbox
+        df_em_tratativa = df_abertos[df_abertos['Ação'] == 'Em Tratativa'].copy()
+
+        if df_em_tratativa.empty:
+            st.warning("⚠️ Nenhuma atendimento marcado como 'Em Tratativa'. Marque um atendimento na lista abaixo para registrar o contato.")
+        else:
+            
+            # Mapeia IDs para Prioridades para exibir no Selectbox
+            id_to_priority = {
+                row[config.COLUNA_ID_CLIENTE]: f"#{row['Prioridade']} (ID: {row[config.COLUNA_ID_CLIENTE]}) - {row[config.COLUNA_ASSUNTO]}"
+                for index, row in df_em_tratativa.iterrows() 
+            }
+            
+            priority_options = list(id_to_priority.values())
+            
+            # Lógica de Retenção do Selectbox
+            selected_option_str = st.session_state.get("selected_ticket_for_log")
+            
+            try:
+                initial_index = priority_options.index(selected_option_str)
+            except (ValueError, TypeError):
+                initial_index = 0
+            
+            selected_option = st.selectbox(
+                "Selecione o Atendimento para Registrar Log:",
+                options=priority_options,
+                index=initial_index,
+                key="selected_ticket_for_log"
+            )
+            
+            # Extrai o ID do cliente selecionado
+            selected_id = selected_option.split('ID: ')[-1].split(')')[0]
+            
+            # --- BUSCA SEGURA ---
+            # Verifica se o ID ainda existe na lista filtrada
+            if selected_id in df_em_tratativa[config.COLUNA_ID_CLIENTE].values:
+                active_item = df_em_tratativa[df_em_tratativa[config.COLUNA_ID_CLIENTE] == selected_id].iloc[0]
+            else:
+                active_item = df_em_tratativa.iloc[0]
+                selected_id = active_item[config.COLUNA_ID_CLIENTE]
+
+
+            if active_item is not None:
+                primeira_prioridade = active_item['Prioridade']
+                current_status = status_map.get(selected_id, 'Aberto')
+                
+                # Encontra o índice atual para o selectbox
+                status_options = ['Aberto', 'Em Tratativa', 'Concluído']
+                try:
+                    idx_status = status_options.index(current_status)
+                except ValueError:
+                    idx_status = 0
+                
+                st.markdown(f"**Tratando Prioridade #{primeira_prioridade}** (ID: `{selected_id}` | Assunto: `{active_item[config.COLUNA_ASSUNTO]}`)")
+                st.info(f"Status Atual: **{current_status}**")
+                
+                with st.form("contact_form_details", clear_on_submit=True):
+                    
+                    # SELETOR DE STATUS (Fonte de verdade)
+                    st.subheader("1. Atualizar Status")
+                    novo_status_form = st.selectbox("Novo Status:", status_options, index=idx_status)
+
+                    st.markdown("---")
+                    st.subheader("2. Registrar Contato")
+
+                    col_c1, col_c2 = st.columns(2)
+                    input_contato1 = col_c1.text_input("Opção de Contato 1", key="input_contato1")
+                    input_contato2 = col_c2.text_input("Opção de Contato 2", key="input_contato2")
+                    
+                    st.write("**Meio de Contato Realizado:**")
+                    col_check1, col_check2, col_check3, col_check4 = st.columns(4)
+                    check_call = col_check1.checkbox("📞 Ligação")
+                    check_msg = col_check2.checkbox("📱 Mensagem SMS")
+                    check_wapp = col_check3.checkbox("📞 WhatsApp (Ligação)")
+                    check_wapp_msg = col_check4.checkbox("💬 WhatsApp (Mensagem)")
+                    
+                    notes = st.text_area("Observações da Tentativa/Próximos Passos", max_chars=500)
+                    
+                    submitted = st.form_submit_button("✅ Salvar Status e Log")
+
+                    if submitted:
+                        if novo_status_form != 'Aberto' and not (check_call or check_msg or check_wapp or check_wapp_msg or notes):
+                             st.warning("Atenção: Você mudou o status mas não registrou nenhum detalhe de contato/observação.")
+                        
+                        # 1. Salva LOG
+                        log_entry = {
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "cliente_id": selected_id,
+                            "novo_status": novo_status_form, 
+                            "contato_op1": input_contato1,
+                            "contato_op2": input_contato2,
+                            "meio": [
+                                m for m, checked in [
+                                    ("Ligação", check_call), ("SMS", check_msg), 
+                                    ("WhatsApp Ligação", check_wapp), ("WhatsApp Mensagem", check_wapp_msg)
+                                ] if checked
+                            ],
+                            "observacoes": notes
+                        }
+                        st.session_state.setdefault('log_contato', {}).setdefault(selected_id, []).append(log_entry)
+                        
+                        # 2. ATUALIZA O STATUS NA MEMÓRIA (PERSISTÊNCIA)
+                        st.session_state['status_map'][selected_id] = novo_status_form
+                        
+                        st.success(f"Sucesso! Status alterado para '{novo_status_form}'.")
+                        
+                        if novo_status_form == 'Concluído':
+                            st.session_state['show_contact_form'] = False
+                        
+                        st.rerun()
+
+            st.button("❌ Fechar Formulário", on_click=lambda: st.session_state.update(show_contact_form=False), key="close_form_out")
+    
+    st.markdown("---")
+    
     # ---- KPIs Principais ----
     st.subheader("KPIs dos Chamados Selecionados")
     col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
@@ -99,7 +284,7 @@ else:
     col_kpi2.metric("Total Fora do SLA (Estourado)", f"{total_fora_sla} 🚨")
     col_kpi3.metric("Total em Alerta (Regra de 4h)", f"{total_em_alerta} ⚠️")
 
-    # ---- KPIs de Alerta por Hora de Abertura (19h, 20h, 21h, 22h) ----
+    # ---- KPIs de Alerta por Hora de Abertura ----
     st.subheader("Monitoramento de Tempo Aberto (Próximo do SLA)")
     col_alerta1, col_alerta2, col_alerta3, col_alerta4 = st.columns(4)
     
@@ -127,51 +312,55 @@ else:
     else:
         st.warning("Colunas 'latitude' ou 'longitude' não encontradas. O mapa não pode ser exibido.")
 
-    # ---- Tabela de Chamados Pendentes ----
+    # ---- Tabela de Chamados com Ação ----
     st.subheader("Lista de Chamados (Ordenado por Prioridade)")
     
     # Cria os valores formatados para exibição
     df_display = df_abertos.copy()
     df_display['Data Abertura'] = df_display[config.COLUNA_ABERTURA].dt.strftime('%d/%m/%y %H:%M') 
-    df_display['Tempo Aberto (H:M:S)'] = df_display['Tempo_Decorrido_Segundos'].apply(config.formatar_hms)
-    df_display['Tempo Restante SLA (H:M:S)'] = df_display['Tempo_Restante_Segundos'].apply(config.formatar_hms)
+    df_display['Tempo Aberto'] = df_display['Tempo_Decorrido_Segundos'].apply(config.formatar_hms)
+    df_display['Restante SLA'] = df_display['Tempo_Restante_Segundos'].apply(config.formatar_hms)
     
-    # Colunas finais para st.data_editor
+    # Colunas que serão exibidas (Read-Only)
     colunas_finais = [
+        'Ação', 
         'Prioridade', config.COLUNA_ID_CLIENTE, config.COLUNA_NOME_CLIENTE, config.COLUNA_ASSUNTO, 
-        config.COLUNA_STATUS, 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)', 'Ação'
+        config.COLUNA_STATUS, 'Data Abertura', 'Tempo Aberto', 'Restante SLA', 
     ]
     if config.COLUNA_TECNICO in df_display.columns:
         colunas_finais.insert(5, config.COLUNA_TECNICO) 
     
-    colunas_finais = [col for col in colunas_finais if col in df_display.columns or col in ['Prioridade', 'Data Abertura', 'Tempo Aberto (H:M:S)', 'Tempo Restante SLA (H:M:S)', 'Ação']]
-
-    editor_key = 'action_editor' 
+    # Colunas visíveis
+    cols_visual = [col for col in colunas_finais if col in df_display.columns or col in ['Prioridade', 'Data Abertura', 'Tempo Aberto', 'Restante SLA', 'Ação']]
     
-    st.data_editor(
-        df_display[colunas_finais],
-        column_config={
-            "Prioridade": st.column_config.Column("Priori.", width="small"),
-            "Ação": st.column_config.SelectboxColumn(
-                "Concluir Atendimento?",
-                width="small",
-                options=['Aberto', 'Concluído'],
-                required=True,
-            )
-        },
-        hide_index=True,
+    # Colunas auxiliares para estilo (que serão escondidas)
+    cols_aux = [
+        'Tempo_Decorrido_Segundos', 'Tempo_Restante_Segundos', 
+        'SLA_Estourado', 'SLA_Alerta'
+    ]
+    cols_aux = [c for c in cols_aux if c in df_display.columns]
+    
+    # Combina visual + auxiliar para passar ao Styler
+    cols_total = cols_visual + [c for c in cols_aux if c not in cols_visual]
+
+    # MUDANÇA FINAL: Tabela de leitura com estilos
+    st.dataframe(
+        df_display[cols_total].style.apply(config.highlight_sla, axis=1)
+                         .hide(axis="columns", subset=cols_aux),
         use_container_width=True,
-        key=editor_key
+        hide_index=True
     )
     
-    # Lógica para remover os concluídos (Esta é a parte que registra a ação)
+    # Lógica para registrar o status na memória
     if st.session_state.get(editor_key, False):
         edited_data = st.session_state[editor_key]
         if edited_data.get('edited_rows'):
             for index, row in edited_data['edited_rows'].items():
-                if row.get('Ação') == 'Concluído':
+                if row.get('Ação'):
                     cliente_id = df_display.iloc[index][config.COLUNA_ID_CLIENTE]
+                    novo_status = row.get('Ação')
                     
-                    if cliente_id not in st.session_state.get('concluidos_list', []):
-                        st.session_state.setdefault('concluidos_list', []).append(cliente_id)
-                        st.experimental_rerun()
+                    st.session_state['status_map'][cliente_id] = novo_status
+                    
+                    if novo_status == 'Concluído':
+                        st.rerun()
