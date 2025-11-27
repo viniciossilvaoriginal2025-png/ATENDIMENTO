@@ -90,7 +90,6 @@ if config.COLUNA_ASSUNTO in df_processado.columns:
     df_processado['Tempo_Restante_Segundos'] = df_processado['SLA_Total_Segundos'] - df_processado['Tempo_Decorrido_Segundos']
 else:
     st.warning("Coluna 'Assunto' não encontrada. Usando SLA padrão de 24h.")
-    # Fallback to 24h global SLA (though not strictly necessary as this page doesn't need SLA columns)
     pass
 
 
@@ -209,7 +208,7 @@ with col_graf2:
                             title="Distribuição de Status")
         st.plotly_chart(fig_status, use_container_width=True)
 
-# ---- (SEÇÃO DE MAPA ALTERADA) ----
+# ---- (SEÇÃO DE MAPA) ----
 st.markdown("---")
 st.header("Mapa de Chamados (Baseado nos Filtros)")
 
@@ -219,7 +218,6 @@ if config.COLUNA_LATITUDE in df_filtrado.columns and config.COLUNA_LONGITUDE in 
     if df_mapa.empty:
         st.info("Nenhum chamado com coordenadas válidas encontrado para os filtros atuais.")
     else:
-        # A página Visão Geral não tem SLA, então colorimos pelo padrão (Safe)
         mapa_folium = config.criar_mapa_folium(df_mapa)
         st_folium(mapa_folium, use_container_width=True, height=400, returned_objects=[])
 else:
